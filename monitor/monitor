@@ -35,7 +35,7 @@ function publish(config, type, sub, data) {
 function display(config, type, sub, data) {
     if (sub == 'insert')
         data.forEach((item) =>
-            console.error(`${item.timeFormatted} ${type.toUpperCase()}/${sub} [${item.type}] ${item.flight} ${item.text}${item.warn ? ' WARNING' : ''}`)
+            console.error(`${item.timeFormatted} ${type.toUpperCase()}/${sub} [${item.type}] ${item.flight} ${item.text}${item.warn ? ' [NOTICE]' : ''}`)
         );
     //else if (sub == 'remove') data.forEach((item) => console.error(`${item} ${type.toUpperCase()}/${sub}`));
 }

@@ -40,7 +40,6 @@ function detectTurbulence(verticalRates) {
         variation = maxRate - minRate;
 
     if (variation > 1200) {
-        // Calculate standard deviation for better assessment
         const avg = verticalRates.reduce((sum, rate) => sum + rate, 0) / verticalRates.length;
         const variance = verticalRates.reduce((sum, rate) => sum + Math.pow(rate - avg, 2), 0) / verticalRates.length;
         const stdDev = Math.sqrt(variance);

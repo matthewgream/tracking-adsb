@@ -144,6 +144,7 @@ module.exports = {
             : `passed ${timePhrase} at ${altitudeAtOverhead}`;
         return {
             text: `overhead${verticalInfo}, ${observationGuide}`,
+            warn: aircraft.calculated.overhead.overheadFuture,
             overheadInfo: {
                 approachDirection: {
                     bearing: aircraft.calculated.overhead.approachBearing,

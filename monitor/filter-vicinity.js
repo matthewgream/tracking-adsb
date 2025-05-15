@@ -39,6 +39,7 @@ module.exports = {
         const trackInfo = aircraft.track ? ` tracking ${helpers.bearing2Cardinal(aircraft.track)}` : '';
         return {
             text: `nearby, look ${direction}${trackInfo}`,
+            warn: true,
         };
     },
 };

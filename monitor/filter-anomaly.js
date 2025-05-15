@@ -54,7 +54,7 @@ function detectAltitudeOscillation(altitudes) {
     if (directionChanges >= 2 && altVariation > 2000)
         return {
             type: 'altitude-oscillation',
-            severity: 'high',
+            severity: 'medium',
             details: `${directionChanges} direction changes, ${altVariation.toFixed(0)} ft range`,
         };
     return null;
@@ -69,7 +69,7 @@ function detectAltitudeDeviation(aircraft, recentAltitudes) {
     if (wasAtAssigned && deviation > 800 && deviation < 3000)
         return {
             type: 'altitude-deviation',
-            severity: 'high',
+            severity: 'medium',
             details: `${deviation.toFixed(0)} ft deviation from assigned ${assignedAlt} ft`,
         };
     return null;
@@ -95,7 +95,8 @@ function detectRapidVerticalRateChange(aircraft, verticalRates) {
     if (rateChange > 2000)
         return {
             type: 'vertical-rate-change',
-            severity: aircraft.nav_modes && aircraft.nav_modes.includes('tcas') ? 'high' : 'medium',
+            //severity: aircraft.nav_modes && aircraft.nav_modes.includes('tcas') ? 'high' : 'medium',
+            severity: 'medium',
             details: `${rateChange.toFixed(0)} ft/min change${aircraft.nav_modes && aircraft.nav_modes.includes('tcas') ? ' (TCAS active)' : ''}`,
         };
     return null;

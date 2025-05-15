@@ -87,9 +87,7 @@ module.exports = {
             .join(' ');
         return {
             text: `${categoryFormatted}: ${aircraft.calculated.specific.primaryMatch.description}`,
-            warn:
-                aircraft.calculated.specific.primaryMatch.category === 'government' ||
-                aircraft.calculated.specific.primaryMatch.category === 'emergency-services',
+            warn: true,
             specificInfo: {
                 matches: aircraft.calculated.specific.matches,
                 category: aircraft.calculated.specific.primaryMatch.category,
