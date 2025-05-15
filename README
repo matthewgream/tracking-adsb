@@ -1,0 +1,3 @@
+
+status -- updated status page (using lighttpd) for adsb based device (with flightaware, flightradar24, adsb-exchange, radarbox services) with real-time updates
+monitor -- monitor adsb feed and generate alerts to display & mqtt
