@@ -51,8 +51,8 @@ module.exports = {
     },
     preprocess: (aircraft) => {
         aircraft.calculated.landing = { willIntersectGround: false };
-        if (aircraft.calculated.altitude < this.conf.tracking.landing.altitude && aircraft.calculated.distance < this.conf.tracking.landing.distance) {
-            const landing = calculateGroundIntersect(this.conf.location.lat, this.conf.location.lon, this.conf.tracking.landing.radius, aircraft);
+        if (aircraft.calculated.altitude < this.conf.altitude && aircraft.calculated.distance < this.conf.distance) {
+            const landing = calculateGroundIntersect(this.extra.data.location.lat, this.extra.data.location.lon, this.conf.radius, aircraft);
             if (landing && landing.willIntersectGround) {
                 landing.airports = this.extra.data.airports.findNearby(landing.groundLat, landing.groundLon);
                 landing.isPossibleLanding = landing.airports.length > 0;

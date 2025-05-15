@@ -46,8 +46,10 @@ module.exports = {
     },
     format: (aircraft) => {
         const airport = aircraft.calculated.airports_nearby[0];
+        const name = airport.name ? (airport.icao ? `${airport.icao} [${airport.name}]` : airport.name) : airport.icao || '';
         return {
-            text: `near ${airport.name || airport.icao}`,
+            text: `near ${name}`,
+            warn: this.conf.priorities?.includes(airport.icao),
         };
     },
 };

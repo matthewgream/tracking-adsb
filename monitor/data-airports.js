@@ -20,10 +20,10 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 const airportsData = require('../airports/airports-data.js');
 
 function airportATZradius(airport) {
-    return (airport.iata && airport.iata.trim() !== '' ? 2.5 : 2.0) * 1.852;
+    return (airport.radius ? airport.radius : airport.iata && airport.iata.trim() !== '' ? 2.5 : 2.0) * 1.852;
 }
 function airportATZaltitude(airport) {
-    return (airport.elevation || 0) + 2000;
+    return (airport.elevation || 0) + (airport.height || 2000);
 }
 
 function findNearby(lat, lon, options = {}) {
@@ -39,10 +39,19 @@ function findNearby(lat, lon, options = {}) {
         .sort((a, b) => a.distance - b.distance);
 }
 
+function apply(airports) {
+    Object.entries(airports).forEach(([icao, airport]) => {
+        if (!airportsData[icao]) airportsData[icao] = { icao };
+        Object.assign(airportsData[icao], airport);
+        console.error(`airportsData: override [${icao}]: ${JSON.stringify(airportsData[icao])}`);
+    });
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 module.exports = {
+    apply,
     findNearby,
 };
 

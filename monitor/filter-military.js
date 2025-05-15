@@ -12,6 +12,7 @@ module.exports = {
     enabled: true,
     priority: 6,
     config: (conf, extra) => {
+        this.conf = conf;
         this.extra = extra;
         this.militaryPrefixes = ['RRR', 'VVV', 'RCH'];
     },

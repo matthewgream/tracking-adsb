@@ -14,7 +14,7 @@ module.exports = {
     config: (conf, extra) => {
         this.conf = conf;
         this.extra = extra;
-        this.patterns = this.conf.tracking.specific?.patterns || [
+        this.patterns = this.conf.patterns || [
             // Government & VIP flights
             { pattern: '^(EXEC|STATE|GOV)[0-9]', category: 'government', description: 'Government flight' },
             { pattern: '^CAF', category: 'government', description: 'Canadian Air Force' },
@@ -55,7 +55,7 @@ module.exports = {
         return aircraft.calculated.specific.matches.length > 0;
     },
     sort: (a, b) => {
-        const categoryPriorities = this.conf.tracking.specific?.categoryPriorities || {
+        const categoryPriorities = this.conf.priorities || {
             government: 1,
             'emergency-services': 2,
             'military-transport': 3,

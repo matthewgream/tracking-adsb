@@ -20,8 +20,8 @@ module.exports = {
         if (
             aircraft.calculated.distance &&
             aircraft.calculated.altitude &&
-            aircraft.calculated.distance <= this.conf.tracking.vicinity.distance &&
-            aircraft.calculated.altitude <= this.conf.tracking.vicinity.altitude
+            aircraft.calculated.distance <= this.conf.distance &&
+            aircraft.calculated.altitude <= this.conf.altitude
         )
             aircraft.calculated.is_proximate = true;
     },

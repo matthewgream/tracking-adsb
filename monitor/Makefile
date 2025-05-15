@@ -1,7 +1,8 @@
 
 SYSTEM = adsb
 TARGET = monitor
-SOURCES = $(TARGET) fetch *.js
+HOSTNAME = $(shell hostname)
+SOURCES = $(TARGET) fetch *.js config.js.$(HOSTNAME)
 SCRIPTS = watcher
 
 ##
@@ -13,9 +14,9 @@ lint:
 	eslint $(SOURCES)
 test: $(TARGET)
 	./$(TARGET)
-watcher:
+watch:
 	 stdbuf -i0 -o0 -e0  mosquitto_sub -t "adsb/#" -v | ./watcher --warnings --raw-text
-.PHONY: all clean format test lint
+.PHONY: all prettier lint test watch
 
 ##
 

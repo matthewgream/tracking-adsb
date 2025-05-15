@@ -98,14 +98,14 @@ module.exports = {
     },
     preprocess: (aircraft) => {
         aircraft.calculated.overhead = { willIntersectOverhead: false };
-        const overhead = calculateOverheadIntersect(this.conf.location.lat, this.conf.location.lon, this.conf.location.alt || 0, aircraft);
+        const overhead = calculateOverheadIntersect(this.extra.data.location.lat, this.extra.data.location.lon, this.extra.data.location.alt || 0, aircraft);
         if (
             overhead &&
             overhead.willIntersectOverhead &&
-            Math.abs(overhead.overheadDistance) < this.conf.tracking.overhead.radius &&
-            Math.abs(overhead.overheadSeconds) < this.conf.tracking.overhead.time &&
-            overhead.overheadAltitude < this.conf.tracking.overhead.altitude &&
-            aircraft.calculated.distance < this.conf.tracking.overhead.distance
+            Math.abs(overhead.overheadDistance) < this.conf.radius &&
+            Math.abs(overhead.overheadSeconds) < this.conf.time &&
+            overhead.overheadAltitude < this.conf.altitude &&
+            aircraft.calculated.distance < this.conf.distance
         )
             aircraft.calculated.overhead = overhead;
     },

@@ -51,11 +51,11 @@ module.exports = {
     },
     preprocess: (aircraft) => {
         aircraft.calculated.lifting = { isLiftingOff: false };
-        if (aircraft.calculated.altitude < this.conf.tracking.lifting?.altitude) {
-            const lifting = calculateLifingTrajectory(this.conf.location.lat, this.conf.location.lon, aircraft);
+        if (!this.conf.altitude || aircraft.calculated.altitude < this.conf.altitude) {
+            const lifting = calculateLifingTrajectory(this.extra.data.location.lat, this.extra.data.location.lon, aircraft);
             if (lifting && lifting.isLiftingOff) {
                 lifting.nearbyAirports = this.extra.data.airports.findNearby(aircraft.lat, aircraft.lon, {
-                    distance: this.conf.tracking.lifting?.airportRadius,
+                    distance: this.conf.radius,
                 });
                 lifting.hasKnownOrigin = lifting.nearbyAirports.length > 0;
                 if (lifting.hasKnownOrigin) lifting.departureAirport = lifting.nearbyAirports[0];

@@ -3,10 +3,20 @@
 
 module.exports = {
     link: 'http://adsb.local/adsbx/data/aircraft.json',
-    tracking: {
+    airports: {
+        override: {
+            EGLW: {
+                radius: 0.5,
+                height: 1500,
+            },
+        },
+    },
+    filters: {
         emergency: {},
         military: {},
-        airport: {},
+        airport: {
+            priorities: ['EGLW'],
+        },
         anomaly: {},
         weather: {},
         vicinity: {
@@ -26,7 +36,7 @@ module.exports = {
         },
         lifting: {
             altitude: 2500, // Maximum altitude to consider for takeoff detection
-            airportRadius: 5 * 1.852, // Radius to search for departure airports (km)
+            radius: 5 * 1.852, // Radius to search for departure airports (km)
             minClimbRate: 300, // Minimum climb rate to consider as takeoff (ft/min)
         },
         airprox: {

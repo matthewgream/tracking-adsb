@@ -12,6 +12,7 @@ module.exports = {
     enabled: true,
     priority: 1,
     config: (conf, extra) => {
+        this.conf = conf;
         this.extra = extra;
         this.emergencySquawks = ['7500', '7600', '7700'];
     },

@@ -284,10 +284,11 @@ function alertMeta(format, aircraft) {
 
 function init(config) {
     console.error('***');
-    config.airports = airportData.findNearby(config.location.lat, config.location.lon, { distance: config.tracking.vicinity.distance });
     console.error('config:', config);
-    const extra = { data: { airports: airportData }, format: { getStats_List, formatAltitude } };
-    filterModules.forEach((module) => module.config(config, extra));
+    if (config.airports?.override) airportData.apply(config.airports.override);
+    config.airports = airportData.findNearby(config.location.lat, config.location.lon, { distance: config.filters.vicinity.distance });
+    const extra = { data: { airports: airportData, location: config.location }, format: { getStats_List, formatAltitude } };
+    filterModules.forEach((module) => module.config(config.filters[module.id], extra));
     publishInit(config.publish);
     process.on('exit', () => publishTerm());
 }
@@ -309,7 +310,9 @@ async function loop(config) {
                 display(config.display, 'alert', 'remove', alertInfo.alertsRemoved);
             }
             // XXX publishStatus/displayStatus
-            console.error(`${new Date().toISOString()} ALERT/status new=${alertInfo.alertsInserted.length}/all=${alertInfo.alertsActive.length}: ${alertStats()}`);
+            console.error(
+                `${new Date().toISOString()} ALERT/status new=${alertInfo.alertsInserted.length}/all=${alertInfo.alertsActive.length}: ${alertStats()}`
+            );
         } else console.error('No data received');
     } catch (error) {
         console.error(`Error in loop: ${error.message}`);
