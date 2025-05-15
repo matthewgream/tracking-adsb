@@ -3,7 +3,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const { hostname } = require('os');
-const configFile = `./config.js.${hostname}`;
+const configFile = `./config.${hostname}.js`;
 const config = require(configFile);
 console.error(`config: ${configFile}`);
 

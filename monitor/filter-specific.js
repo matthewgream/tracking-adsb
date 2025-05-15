@@ -14,7 +14,7 @@ module.exports = {
     config: (conf, extra) => {
         this.conf = conf;
         this.extra = extra;
-        this.patterns = this.conf.patterns || [
+        this.flights = this.conf.flights || [
             // Government & VIP flights
             { pattern: '^(EXEC|STATE|GOV)[0-9]', category: 'government', description: 'Government flight' },
             { pattern: '^CAF', category: 'government', description: 'Canadian Air Force' },
@@ -33,7 +33,7 @@ module.exports = {
             // Custom watchlist - add your own
             { pattern: '^(RETRO|HISTORIC)', category: 'special-interest', description: 'Historic aircraft' },
         ];
-        this.compiledPatterns = this.patterns.map((p) => ({
+        this.flightsCompiled = this.flights.map((p) => ({
             ...p,
             regex: new RegExp(p.pattern, 'i'), // Case insensitive
         }));
@@ -41,7 +41,7 @@ module.exports = {
     preprocess: (aircraft) => {
         aircraft.calculated.specific = { matches: [] };
         if (!aircraft.flight) return;
-        const matches = this.compiledPatterns
+        const matches = this.flightsCompiled
             .filter((p) => p.regex.test(aircraft.flight))
             .map((p) => ({ pattern: p.pattern, category: p.category, description: p.description }));
         if (matches.length > 0)

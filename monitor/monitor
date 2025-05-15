@@ -126,10 +126,18 @@ function filterAircraft(lat, lon, aircraftList) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-async function obtain(conf) {
+let preprocess_exclude = null;
+function preprocess(config, data) {
+    if (!preprocess_exclude && config.exclude) preprocess_exclude = new Set(config.exclude);
+    if (preprocess_exclude && data.aircraft) data.aircraft = data.aircraft.filter((aircraft) => !aircraft.flight || !preprocess_exclude.has(aircraft.flight));
+    return data;
+}
+
+async function obtain(config) {
     try {
-        const data = await flightData.fetch(conf.link);
-        const aircraft = filterAircraft(conf.location.lat, conf.location.lon, data.aircraft);
+        let data = await flightData.fetch(config.link);
+        if (config.flights) data = preprocess(config.flights, data);
+        const aircraft = filterAircraft(config.location.lat, config.location.lon, data.aircraft);
         const status = {
             receivedAircraftCount: data.aircraft.length,
             selectedAircraftCount: aircraft.length,

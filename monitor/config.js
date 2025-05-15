@@ -11,6 +11,9 @@ module.exports = {
             },
         },
     },
+    flights: {
+        exclude: ['TEST1234'],
+    },
     filters: {
         emergency: {},
         military: {},
@@ -45,7 +48,7 @@ module.exports = {
             airportExclusionRadius: 5, // km
         },
         specific: {
-            patterns: [
+            flights: [
                 { pattern: '^(TKF)[0-9]', category: 'royalty', description: "The King's Flight" },
                 //
                 { pattern: '^(EXEC|STATE|GOV)[0-9]', category: 'government', description: 'Government flight' },
