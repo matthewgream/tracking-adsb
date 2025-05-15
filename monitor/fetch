@@ -1,0 +1,90 @@
+#!/usr/bin/node
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+const { hostname } = require ('os');
+const configFile = `./config.js.${hostname}`;
+const config = require (configFile);
+console.error (`config: ${configFile}`);
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function deg2rad(deg) {
+    return deg * (Math.PI / 180);
+}
+
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = deg2rad(lat2 - lat1),
+        dLon = deg2rad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+const filters = {
+    proximityFilter: (aircraft) => {
+        if (!aircraft.calculated_distance || !aircraft.calculated_altitude) return false;
+        return aircraft.calculated_distance <= config.tracking.distance && aircraft.calculated_altitude <= config.tracking.altitude;
+    },
+};
+
+function calculateAircraft(aircraftList) {
+    for (const aircraft of aircraftList) {
+        if (aircraft.lat && aircraft.lon)
+            aircraft.calculated_distance = Math.round(calculateDistance(config.location.lat, config.location.lon, aircraft.lat, aircraft.lon) * 10) / 10;
+        aircraft.calculated_altitude = aircraft.alt_baro || aircraft.alt_geom;
+        if (aircraft.calculated_altitude === 'ground') aircraft.calculated_altitude = 0;
+        if (typeof aircraft.calculated_altitude !== 'number') delete aircraft.calculated_altitude;
+    }
+    return aircraftList;
+}
+
+function filterAircraft(aircraftList) {
+    const filtered = [];
+    const activeFilters = [filters.proximityFilter];
+    calculateAircraft(aircraftList);
+    for (const aircraft of aircraftList) if (activeFilters.some((filterFn) => filterFn(aircraft))) filtered.push(aircraft);
+    filtered.sort((a, b) => {
+        if (a.calculated_distance === undefined && b.calculated_distance === undefined) return 0;
+        if (a.calculated_distance === undefined) return 1;
+        if (b.calculated_distance === undefined) return -1;
+        return a.calculated_distance - b.calculated_distance;
+    });
+    return filtered;
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+const flightData = require('./data-flights.js');
+
+async function main() {
+    try {
+        const shouldFilter = process.argv.includes('--filter') || process.argv.includes('-f');
+        const data = await flightData.fetch(config.link);
+        console.error(`Received data for ${data.aircraft.length} aircraft`);
+        if (shouldFilter) {
+            console.error(`Filtering for aircraft within ${config.tracking.distance}km and under ${config.tracking.altitude}ft`);
+            const aircraft = filterAircraft(data.aircraft);
+            console.error(
+                `Found ${aircraft.length} aircraft within specified limits: ` +
+                    aircraft
+                        .map((a) => a.flight)
+                        .filter(Boolean)
+                        .join(', ')
+            );
+            console.log(Object.fromEntries(Object.entries(data).filter(([key]) => key !== 'aircraft')));
+            aircraft.forEach((aircraft) => console.log(aircraft));
+        } else {
+            const aircraft = calculateAircraft(data.aircraft);
+            aircraft.forEach((aircraft) => console.log(aircraft));
+        }
+    } catch (error) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+    }
+}
+
+main();
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------

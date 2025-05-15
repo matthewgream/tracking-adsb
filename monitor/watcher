@@ -1,0 +1,168 @@
+#!/bin/bash
+
+# This script formats ADSB MQTT data into a pipe-separated table
+# Usage: mosquitto_sub -t "adsb/#" -v | ./adsb-format.sh [options]
+#
+# Options:
+#   -w, --warnings   Show only warning alerts (warn=true)
+#   -r, --raw-text   Show raw text field in details column instead of formatted details
+
+# Process command line arguments
+WARNINGS_ONLY=false
+RAW_TEXT=false
+for arg in "$@"; do
+    case $arg in
+    -w | --warnings)
+        WARNINGS_ONLY=true
+        shift
+        ;;
+    -r | --raw-text)
+        RAW_TEXT=true
+        shift
+        ;;
+    *)
+        # Unknown option
+        ;;
+    esac
+done
+
+# Display selected options before header
+SELECTED_OPTIONS=""
+if [[ "$WARNINGS_ONLY" == "true" ]]; then
+    SELECTED_OPTIONS="${SELECTED_OPTIONS}warnings-only, "
+fi
+if [[ "$RAW_TEXT" == "true" ]]; then
+    SELECTED_OPTIONS="${SELECTED_OPTIONS}raw-text, "
+fi
+
+# Print options line if any options are selected
+if [[ ! -z "$SELECTED_OPTIONS" ]]; then
+    # Remove trailing comma and space
+    SELECTED_OPTIONS="${SELECTED_OPTIONS%, }"
+    echo -e "\033[1;35mSelected options: ${SELECTED_OPTIONS}\033[0m"
+fi
+
+# Print header
+printf "%-19s | %-20s | %-8s | %-15s | %-10s | %-16s | %-8s | %-8s | %s\n" \
+    "TIME" "TYPE" "FLIGHT" "POSITION" "ALTITUDE" "DIRECTION" "SPEED" "AIRCRAFT" "DETAILS"
+echo "------------------------------------------------------------------------------------------------------------------------------------------------------------------"
+
+# Process input line by line, no buffering
+while IFS= read -r line; do
+    # Extract topic and payload from mosquitto_sub -v output format (topic payload)
+    topic=$(echo "$line" | cut -d' ' -f1)
+    payload=$(echo "$line" | cut -d' ' -f2-)
+
+    # Skip if payload is not valid JSON
+    echo "$payload" | jq -e . >/dev/null 2>&1 || continue
+
+    # Extract common fields
+    time=$(echo "$payload" | jq -r '.timeFormatted | split("T")[1] | split(".")[0]' 2>/dev/null)
+    type=$(echo "$payload" | jq -r '.type | sub("aircraft-"; "")' 2>/dev/null)
+    flight=$(echo "$payload" | jq -r '.flight // "-"' 2>/dev/null)
+
+    # Check if warn is true
+    warn=$(echo "$payload" | jq -r '.warn // "false"' 2>/dev/null)
+
+    # Skip if warnings only mode and this isn't a warning
+    if [[ "$WARNINGS_ONLY" == "true" && "$warn" != "true" ]]; then
+        continue
+    fi
+
+    # Position data
+    distance=$(echo "$payload" | jq -r '.position.distance // 0 | round | tostring + "km"' 2>/dev/null)
+    bearing=$(echo "$payload" | jq -r '.position.cardinalBearing // "-"' 2>/dev/null)
+    position="${distance} ${bearing}"
+
+    # Altitude
+    altitude=$(echo "$payload" | jq -r '.altitude // "-"' 2>/dev/null)
+    if [[ "$altitude" =~ ^[0-9]+$ ]]; then
+        altitude="${altitude} ft"
+    fi
+
+    # Direction data
+    approaching=$(echo "$payload" | jq -r '.position.approachingStation // "-"' 2>/dev/null)
+    relativeTrack=$(echo "$payload" | jq -r '.position.relativeTrack // "-"' 2>/dev/null)
+    if [[ "$approaching" == "true" ]]; then
+        # Round relativeTrack if it's a number
+        if [[ "$relativeTrack" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+            relativeTrack=$(printf "%.0f" "$relativeTrack")
+        fi
+        direction="APPR (${relativeTrack})"
+    elif [[ "$approaching" == "false" ]]; then
+        if [[ "$relativeTrack" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+            relativeTrack=$(printf "%.0f" "$relativeTrack")
+        fi
+        direction="DEPART (${relativeTrack})"
+    else
+        direction="-"
+    fi
+
+    # Speed
+    speed=$(echo "$payload" | jq -r '.speed // "-"' 2>/dev/null)
+
+    # Aircraft type
+    aircraft=$(echo "$payload" | jq -r '.aircraftType // "-"' 2>/dev/null)
+
+    # Specialized details based on message type
+    details=""
+
+    # Get the raw text field
+    raw_text=$(echo "$payload" | jq -r '.text // "-"' 2>/dev/null)
+
+    # Use raw text if option is enabled
+    if [[ "$RAW_TEXT" == "true" ]]; then
+        details="$raw_text"
+    else
+        # For lifting messages
+        if [[ "$type" == "lifting" ]]; then
+            airport=$(echo "$payload" | jq -r '.liftingInfo.departureAirport.name // "-"' 2>/dev/null)
+            climbRate=$(echo "$payload" | jq -r '.liftingInfo.climbRate // 0 | round | tostring + " ft/min"' 2>/dev/null)
+            details="From: ${airport}, Climb: ${climbRate}"
+
+        # For overhead messages
+        elif [[ "$type" == "overhead" ]]; then
+            future=$(echo "$payload" | jq -r '.overheadFuture' 2>/dev/null)
+            seconds=$(echo "$payload" | jq -r '.overheadSeconds // 0 | round' 2>/dev/null)
+            alt=$(echo "$payload" | jq -r '.overheadAltitude // "-" | if type == "number" then round else . end' 2>/dev/null)
+            if [[ "$future" == "true" ]]; then
+                details="Overhead in: ${seconds}s at ${alt}ft"
+            else
+                details="Passed overhead ${seconds}s ago at ${alt}ft"
+            fi
+
+        # For landing messages
+        elif [[ "$type" == "landing" ]]; then
+            warn=$(echo "$payload" | jq -r '.warn // "false"' 2>/dev/null)
+            if [[ "$warn" == "true" ]]; then
+                details="⚠️ UNRECOGNIZED LANDING!"
+            else
+                details="Approaching landing"
+            fi
+
+        # For airports messages
+        elif [[ "$type" == "airports" ]]; then
+            details="$raw_text"
+
+        # For specific messages
+        elif [[ "$type" == "specific" ]]; then
+            category=$(echo "$payload" | jq -r '.specificInfo.category // "-"' 2>/dev/null)
+            description=$(echo "$payload" | jq -r '.specificInfo.description // "-"' 2>/dev/null)
+            details="${category}: ${description}"
+
+        # For all other types, use the text field
+        else
+            details="$raw_text"
+        fi
+    fi
+
+    # Output formatted line
+    if [[ "$warn" == "true" ]]; then
+        printf "\033[1;31m%-19s | %-20s | %-8s | %-15s | %-10s | %-16s | %-8s | %-8s | %s\033[0m\n" \
+            "$time" "$type" "$flight" "$position" "$altitude" "$direction" "$speed" "$aircraft" "$details"
+    else
+        printf "%-19s | %-20s | %-8s | %-15s | %-10s | %-16s | %-8s | %-8s | %s\n" \
+            "$time" "$type" "$flight" "$position" "$altitude" "$direction" "$speed" "$aircraft" "$details"
+    fi
+
+done
