@@ -56,15 +56,15 @@ module.exports = {
     },
     sort: (a, b) => {
         const categoryPriorities = this.conf.tracking.specific?.categoryPriorities || {
-            'government': 1,
+            government: 1,
             'emergency-services': 2,
             'military-transport': 3,
             'special-ops': 4,
-            'vip': 5,
-            'test': 6,
-            'survey': 7,
+            vip: 5,
+            test: 6,
+            survey: 7,
             'special-interest': 8,
-	    'royalty': 9
+            royalty: 9,
         };
         const catA = categoryPriorities[a.calculated.specific.primaryMatch.category] || 999,
             catB = categoryPriorities[b.calculated.specific.primaryMatch.category] || 999;

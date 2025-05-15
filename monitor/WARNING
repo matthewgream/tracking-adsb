@@ -1,0 +1,121 @@
+
+This is EXPERIMENTAL and will not yield stable results at this point, especially in dense areas where inferences are made (such as landing or lifting from an airport when there are multiple proximate),
+and especially with the more sketchy filters (anomalies and weather).
+
+mqtt: connecting to 'mqtt://localhost:1883'
+mqtt: loaded using 'server=mqtt://localhost:1883,client=adsb-monitor,topics='
+***
+mqtt: connected
+2025-05-15T12:11:47.181Z ALERT/insert [aircraft-military] BLUE71 military (205.8km WSW FL371) WARNING
+2025-05-15T12:11:47.181Z ALERT/insert [aircraft-airport] TAP52TP near London Heathrow Airport <A3> (20.6km W 25 ft)
+2025-05-15T12:11:47.181Z ALERT/insert [aircraft-airport] [4042e2] near Netheravon Airfield
+2025-05-15T12:11:47.181Z ALERT/insert [aircraft-airport] GSJBB near Wycombe Air Park <A2> (42.7km WNW 1,325 ft)
+2025-05-15T12:11:47.181Z ALERT/insert [aircraft-lifting] ACA869 climbing from London Heathrow Airport at 896 ft/min <A3> (13.9km WSW 1,625 ft)
+2025-05-15T12:11:47.181Z ALERT/insert [aircraft-specific] TEST1234 Test: Test flight <C0>
+2025-05-15T12:11:47.181Z ALERT/insert [aircraft-anomaly] EZY8634 anomalies: [1] high-speed-low-altitude (452 kts at 13950 ft) [MEDIUM]
+2025-05-15T12:11:47.181Z ALERT/insert [aircraft-weather] EZY8634 weather: [1] temperature-anomaly (-18°C from ISA)
+2025-05-15T12:11:47.181Z ALERT/insert [aircraft-weather] N123QS weather: [1] temperature-anomaly (-184°C from ISA) <A3> (70.9km WSW FL83)
+2025-05-15T12:11:47.181Z ALERT/insert [aircraft-weather] NJE335F weather: [1] temperature-anomaly (+18°C from ISA) <A2> (206.1km ESE FL450)
+2025-05-15T12:11:47.181Z ALERT/insert [aircraft-weather] EZY38KB weather: [1] temperature-anomaly (+338°C from ISA)
+2025-05-15T12:11:47.233Z ALERT/status new=11/all=11: aircraft-airport=3, aircraft-anomaly=1, aircraft-lifting=1, aircraft-military=1, aircraft-specific=1, aircraft-weather=4
+***
+2025-05-15T12:12:17.115Z ALERT/insert [aircraft-airport] BAW46EZ near London Heathrow Airport <A3> (16.2km WSW 1,050 ft)
+2025-05-15T12:12:17.115Z ALERT/insert [aircraft-airport] BAW483Z near London Heathrow Airport <A3> (21.5km W 150 ft)
+2025-05-15T12:12:17.115Z ALERT/insert [aircraft-overhead] ACA869 overhead climbing at 1728 ft/min, passed about 2 minutes ago at 2,375 ft <A3> (16.6km SW 2,375 ft)
+2025-05-15T12:12:17.115Z ALERT/insert [aircraft-overhead] CFE39R overhead descending at 128 ft/min, passed about a minute ago at 1,675 ft <A3> (10.3km SE 1,675 ft)
+2025-05-15T12:12:17.115Z ALERT/insert [aircraft-lifting] BAW46EZ climbing from London Heathrow Airport at 1536 ft/min <A3> (16.2km WSW 1,050 ft)
+2025-05-15T12:12:17.115Z ALERT/insert [aircraft-anomaly] ETP75 anomalies: [1] extreme-vertical-rate (+15104 ft/min) [MEDIUM] <A1> (166.8km WSW FL140)
+2025-05-15T12:12:17.119Z ALERT/status new=6/all=17: aircraft-airport=5, aircraft-anomaly=2, aircraft-lifting=2, aircraft-military=1, aircraft-overhead=2, aircraft-specific=1, aircraft-weather=4
+***
+2025-05-15T12:12:47.123Z ALERT/insert [aircraft-vicinity] CFE39R nearby, look ESE direction tracking NNW <A3> (7.9km ESE 1,675 ft)
+2025-05-15T12:12:47.123Z ALERT/insert [aircraft-airport] SHT16E near London Heathrow Airport (17.3km WSW 250 ft)
+2025-05-15T12:12:47.123Z ALERT/insert [aircraft-airport] [401d47] near Denham Aerodrome (24.2km WNW 200 ft)
+2025-05-15T12:12:47.123Z ALERT/insert [aircraft-overhead] AFR95CX overhead climbing at 32 ft/min, passed about 2 minutes ago at FL70 <A3> (19.7km SSE FL70)
+2025-05-15T12:12:47.123Z ALERT/insert [aircraft-lifting] SHT16E climbing from London Heathrow Airport at 2432 ft/min (17.3km WSW 250 ft)
+2025-05-15T12:12:47.123Z ALERT/insert [aircraft-anomaly] ACA869 anomalies: [1] vertical-rate-change (2432 ft/min change) [MEDIUM] <A3> (20.2km SW 3,350 ft)
+2025-05-15T12:12:47.123Z ALERT/insert [aircraft-anomaly] N123QS anomalies: [1] vertical-rate-change (3488 ft/min change) [MEDIUM] <A3> (73.5km WSW FL89)
+2025-05-15T12:12:47.123Z ALERT/insert [aircraft-anomaly] EZY38KB anomalies: [1] rapid-speed-change (155 knots in 3 updates) (77.0km ESE 5,725 ft)
+2025-05-15T12:12:47.123Z ALERT/insert [aircraft-anomaly] TOM5TH anomalies: [1] vertical-rate-change (2176 ft/min change) [MEDIUM] <A3> (46.9km NNW FL177)
+2025-05-15T12:12:47.123Z ALERT/insert [aircraft-weather] BAW12DT weather: [1] temperature-anomaly (-228°C from ISA) <A3> (44.8km W 4,225 ft)
+2025-05-15T12:12:47.127Z ALERT/status new=10/all=27: aircraft-airport=7, aircraft-anomaly=6, aircraft-lifting=3, aircraft-military=1, aircraft-overhead=3, aircraft-specific=1, aircraft-vicinity=1, aircraft-weather=5
+
+...
+
+2025-05-15T12:25:17.448Z ALERT/insert [aircraft-overhead] BVR60 overhead descending at 928 ft/min, in just over a minute at 5,190 ft, look N midway up <A3> (16.0km NNE FL70)
+2025-05-15T12:25:17.448Z ALERT/insert [aircraft-anomaly] SVA119 anomalies: [1] rapid-speed-change (105 knots in 11 updates) <A5> (89.3km SE FL191)
+2025-05-15T12:25:17.448Z ALERT/insert [aircraft-weather] BAW81 weather: [1] turbulence (vertical rate 1018 ft/min) <A5> (18.6km SW 4,425 ft)
+2025-05-15T12:25:17.448Z ALERT/insert [aircraft-weather] ELY315 weather: [1] turbulence (vertical rate 399 ft/min) <A5> (36.6km W 2,875 ft)
+2025-05-15T12:25:17.448Z ALERT/insert [aircraft-weather] [39c5c6] weather: [1] turbulence (vertical rate 685 ft/min) <A1> (120.6km SSE FL288)
+2025-05-15T12:25:17.448Z ALERT/insert [aircraft-weather] TRA55A weather: [1] turbulence (vertical rate 546 ft/min) <A3> (101.6km ENE FL378)
+2025-05-15T12:25:17.448Z ALERT/insert [aircraft-weather] [405d0f] weather: [1] turbulence (vertical rate 538 ft/min) <A3> (191.9km WSW FL154)
+2025-05-15T12:25:17.448Z ALERT/insert [aircraft-weather] [4009da] weather: [1] turbulence (vertical rate 796 ft/min) (226.7km E FL360)
+2025-05-15T12:25:17.451Z ALERT/status new=8/all=215: aircraft-airport=21, aircraft-airprox=1, aircraft-anomaly=70, aircraft-lifting=11, aircraft-military=3, aircraft-overhead=15, aircraft-specific=2, aircraft-vicinity=1, aircraft-weather=91
+***
+2025-05-15T12:25:47.482Z ALERT/insert [aircraft-airport] AFR95CX near London Heathrow Airport <A3> (21.6km W 200 ft)
+2025-05-15T12:25:47.482Z ALERT/insert [aircraft-airport] [404cde] near Damyns Hall Aerodrome (34.5km E 1,800 ft)
+2025-05-15T12:25:47.482Z ALERT/insert [aircraft-overhead] BAW7W overhead climbing at 1280 ft/min, passed about a minute ago at 2,100 ft <A5> (13.6km WSW 2,100 ft)
+2025-05-15T12:25:47.482Z ALERT/insert [aircraft-overhead] EXS4TP overhead descending at 1024 ft/min, in about a minute at FL158, look E high in sky <A3> (10.7km SW FL169)
+2025-05-15T12:25:47.482Z ALERT/insert [aircraft-lifting] [404cde] climbing from Damyns Hall Aerodrome at 1536 ft/min (34.5km E 1,800 ft)
+2025-05-15T12:25:47.482Z ALERT/insert [aircraft-anomaly] AFR75YR anomalies: [1] rapid-speed-change (113 knots in 20 updates) <A3> (78.7km NNW FL130)
+2025-05-15T12:25:47.482Z ALERT/insert [aircraft-anomaly] EXS4TP anomalies: [1] rapid-speed-change (108 knots in 17 updates) <A3> (10.7km SW FL169)
+2025-05-15T12:25:47.482Z ALERT/insert [aircraft-anomaly] TRA55A anomalies: [1] vertical-rate-change (2560 ft/min change) [MEDIUM] <A3> (108.0km ENE FL367)
+2025-05-15T12:25:47.482Z ALERT/insert [aircraft-anomaly] [406add] anomalies: [1] altitude-oscillation (2 direction changes, 3325 ft range) [HIGH] <A3> (227.4km WNW FL325) WARNING
+2025-05-15T12:25:47.482Z ALERT/insert [aircraft-weather] RYR60FB weather: [1] turbulence (vertical rate 385 ft/min) <A3> (7.9km NNW FL150)
+2025-05-15T12:25:47.482Z ALERT/insert [aircraft-weather] [406add] weather: [1] turbulence (vertical rate 672 ft/min) <A3> (227.4km WNW FL325)
+2025-05-15T12:25:47.482Z ALERT/insert [aircraft-weather] RYR1099 weather: [1] turbulence (vertical rate 612 ft/min) <A3> (188.6km NW FL304)
+2025-05-15T12:25:47.482Z ALERT/insert [aircraft-weather] UAL988 weather: [1] turbulence (vertical rate 734 ft/min) <A5> (211.2km N FL331)
+2025-05-15T12:25:47.487Z ALERT/status new=13/all=224: aircraft-airport=23, aircraft-anomaly=73, aircraft-lifting=12, aircraft-military=3, aircraft-overhead=17, aircraft-specific=2, aircraft-vicinity=1, aircraft-weather=93
+***
+2025-05-15T12:26:17.459Z ALERT/insert [aircraft-anomaly] SHT5V anomalies: [1] rapid-speed-change (108 knots in 20 updates) <A3> (62.3km NW FL128)
+2025-05-15T12:26:17.459Z ALERT/insert [aircraft-anomaly] RYR44HM anomalies: [1] rapid-speed-change (112 knots in 20 updates) <A3> (100.1km NNW FL97)
+2025-05-15T12:26:17.459Z ALERT/insert [aircraft-anomaly] NSZ6LA anomalies: [1] rapid-speed-change (102 knots in 10 updates) <A3> (46.1km ESE FL120)
+2025-05-15T12:26:17.459Z ALERT/insert [aircraft-anomaly] ELY315 anomalies: [2] altitude-deviation, rapid-speed-change (...) [HIGH] <A5> (31.6km W 1,925 ft) WARNING
+2025-05-15T12:26:17.459Z ALERT/insert [aircraft-anomaly] [a74e99] anomalies: [1] rapid-speed-change (186 knots in 3 updates)
+2025-05-15T12:26:17.459Z ALERT/insert [aircraft-weather] SFG55B weather: [1] turbulence (vertical rate 1596 ft/min) <A2>
+2025-05-15T12:26:17.462Z ALERT/status new=6/all=222: aircraft-airport=21, aircraft-anomaly=78, aircraft-lifting=10, aircraft-military=3, aircraft-overhead=14, aircraft-specific=2, aircraft-vicinity=1, aircraft-weather=93
+***
+2025-05-15T12:26:47.600Z ALERT/insert [aircraft-airport] BAW688 near London Heathrow Airport <A3> (15.7km WSW 1,075 ft)
+2025-05-15T12:26:47.600Z ALERT/insert [aircraft-lifting] BAW688 climbing from London Heathrow Airport at 3008 ft/min <A3> (15.7km WSW 1,075 ft)
+2025-05-15T12:26:47.600Z ALERT/insert [aircraft-airprox] BAW493U airprox C with AFR95CX - 1.8km/300ft separation - diverging <A3> (23.2km W 450 ft)
+2025-05-15T12:26:47.600Z ALERT/insert [aircraft-weather] EZY46ZR weather: [1] turbulence (vertical rate 375 ft/min) <A3> (67.4km SSE FL104)
+2025-05-15T12:26:47.600Z ALERT/insert [aircraft-weather] BAW7W weather: [1] turbulence (vertical rate 910 ft/min) <A5> (22.8km WSW 4,625 ft)
+2025-05-15T12:26:47.600Z ALERT/insert [aircraft-weather] EXS5BA weather: [1] turbulence (vertical rate 786 ft/min) <A3> (240.6km WSW FL345)
+2025-05-15T12:26:47.600Z ALERT/insert [aircraft-weather] RYR91DU weather: [1] turbulence (vertical rate 639 ft/min) <A3> (98.5km ENE FL190)
+2025-05-15T12:26:47.600Z ALERT/insert [aircraft-weather] RYR31LJ weather: [1] turbulence (vertical rate 746 ft/min) <A3> (37.1km SSW n/a)
+2025-05-15T12:26:47.604Z ALERT/status new=8/all=224: aircraft-airport=20, aircraft-airprox=1, aircraft-anomaly=74, aircraft-lifting=11, aircraft-military=3, aircraft-overhead=14, aircraft-specific=2, aircraft-vicinity=1, aircraft-weather=98
+***
+2025-05-15T12:27:17.501Z ALERT/insert [aircraft-airport] BAW493U near London Heathrow Airport <A3> (21.4km W 150 ft)
+2025-05-15T12:27:17.501Z ALERT/insert [aircraft-airport] BAW8TG near London Heathrow Airport <A3> (17.8km WSW 75 ft)
+2025-05-15T12:27:17.501Z ALERT/insert [aircraft-airport] GCMRC near Elstree Airfield <A1> (20.0km NNW 800 ft)
+2025-05-15T12:27:17.501Z ALERT/insert [aircraft-lifting] BAW8TG climbing from London Heathrow Airport at 2432 ft/min <A3> (17.8km WSW 75 ft)
+2025-05-15T12:27:17.501Z ALERT/insert [aircraft-anomaly] RYR31LJ anomalies: [1] vertical-rate-change (2368 ft/min change) [MEDIUM] <A3> (46.1km SW FL80)
+2025-05-15T12:27:17.501Z ALERT/insert [aircraft-anomaly] [4401fa] anomalies: [1] rapid-speed-change (104 knots in 5 updates)
+2025-05-15T12:27:17.501Z ALERT/insert [aircraft-weather] [4401fa] weather: [1] turbulence (vertical rate 683 ft/min)
+2025-05-15T12:27:17.504Z ALERT/status new=7/all=223: aircraft-airport=21, aircraft-airprox=1, aircraft-anomaly=73, aircraft-lifting=11, aircraft-military=3, aircraft-overhead=12, aircraft-specific=2, aircraft-vicinity=1, aircraft-weather=99
+***
+2025-05-15T12:27:47.521Z ALERT/insert [aircraft-airport] GWWAL near Aylesbury/Thame Airport (56.9km WNW 2,000 ft)
+2025-05-15T12:27:47.521Z ALERT/insert [aircraft-anomaly] EZY27KC anomalies: [1] rapid-speed-change (105 knots in 6 updates) <A3> (38.2km N FL79)
+2025-05-15T12:27:47.521Z ALERT/insert [aircraft-anomaly] RYR75ZD anomalies: [1] vertical-rate-change (3328 ft/min change) [MEDIUM] <A3> (47.6km N FL88)
+2025-05-15T12:27:47.521Z ALERT/insert [aircraft-anomaly] DAL36 anomalies: [1] rapid-speed-change (111 knots in 20 updates) <A5> (84.0km NW FL150)
+2025-05-15T12:27:47.521Z ALERT/insert [aircraft-weather] RYR75ZD weather: [1] turbulence (vertical rate 1109 ft/min) <A3> (47.6km N FL88)
+2025-05-15T12:27:47.523Z ALERT/status new=5/all=222: aircraft-airport=21, aircraft-airprox=1, aircraft-anomaly=73, aircraft-lifting=10, aircraft-military=3, aircraft-overhead=12, aircraft-specific=2, aircraft-vicinity=1, aircraft-weather=99
+***
+2025-05-15T12:28:17.539Z ALERT/insert [aircraft-vicinity] BAW688 nearby, look SW direction tracking ESE <A3> (9.7km SW 3,625 ft)
+2025-05-15T12:28:17.539Z ALERT/insert [aircraft-airport] [4072a5] near Deanland Lewes Airport <A3>
+2025-05-15T12:28:17.539Z ALERT/insert [aircraft-airprox] ELY315 airprox C with BAW493U - 1.8km/300ft separation - diverging <A5> (22.6km W 325 ft)
+2025-05-15T12:28:17.539Z ALERT/insert [aircraft-anomaly] EZY8634 anomalies: [1] rapid-speed-change (115 knots in 20 updates) <A3> (67.2km SSE FL118)
+2025-05-15T12:28:17.539Z ALERT/insert [aircraft-anomaly] BAW688 anomalies: [1] vertical-rate-change (2496 ft/min change) [MEDIUM] <A3> (9.7km SW 3,625 ft)
+2025-05-15T12:28:17.539Z ALERT/insert [aircraft-weather] EZY27KC weather: [1] turbulence (vertical rate 625 ft/min) <A3> (39.9km NNW FL86)
+2025-05-15T12:28:17.542Z ALERT/status new=6/all=223: aircraft-airport=22, aircraft-airprox=2, aircraft-anomaly=74, aircraft-lifting=8, aircraft-military=3, aircraft-overhead=11, aircraft-specific=2, aircraft-vicinity=1, aircraft-weather=100
+***
+2025-05-15T12:28:47.557Z ALERT/insert [aircraft-airport] ELY315 near London Heathrow Airport <A5> (20.9km W 50 ft)
+2025-05-15T12:28:47.557Z ALERT/insert [aircraft-airport] DAL9 near London Heathrow Airport <A5> (15.0km WSW 1,275 ft)
+2025-05-15T12:28:47.557Z ALERT/insert [aircraft-overhead] BAW688 overhead climbing at 1472 ft/min, in 59 seconds at 5,997 ft, look SSW midway up <A3> (8.9km SSW 4,550 ft)
+2025-05-15T12:28:47.557Z ALERT/insert [aircraft-lifting] DAL9 climbing from London Heathrow Airport at 1216 ft/min <A5> (15.0km WSW 1,275 ft)
+2025-05-15T12:28:47.557Z ALERT/insert [aircraft-anomaly] BAW7W anomalies: [1] rapid-speed-change (103 knots in 9 updates) <A5> (37.6km W FL95)
+2025-05-15T12:28:47.557Z ALERT/insert [aircraft-weather] BAW688 weather: [1] turbulence (vertical rate 976 ft/min) <A3> (8.9km SSW 4,550 ft)
+2025-05-15T12:28:47.557Z ALERT/insert [aircraft-weather] [44020b] weather: [1] turbulence (vertical rate 1512 ft/min) <A2>
+2025-05-15T12:28:47.557Z ALERT/insert [aircraft-weather] EWG2462 weather: [1] turbulence (vertical rate 342 ft/min) <A3> (40.4km W 3,525 ft)
+2025-05-15T12:28:47.557Z ALERT/insert [aircraft-weather] QTR40U weather: [1] turbulence (vertical rate 607 ft/min) <A5> (262.8km E FL347)
+2025-05-15T12:28:47.560Z ALERT/status new=9/all=226: aircraft-airport=22, aircraft-airprox=2, aircraft-anomaly=73, aircraft-lifting=8, aircraft-military=3, aircraft-overhead=12, aircraft-specific=2, ai
+

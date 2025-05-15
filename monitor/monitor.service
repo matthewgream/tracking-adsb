@@ -1,0 +1,16 @@
+[Unit]
+Description=ADSB Monitor Service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/tracking-adsb/monitor /opt/tracking-adsb/config.js.%H
+TimeoutStopSec=15s
+KillMode=mixed
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+

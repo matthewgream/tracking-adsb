@@ -3,10 +3,10 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const { hostname } = require ('os');
-const configFile = `./config.js.${hostname}`;
-const config = require (configFile);
-console.error (`config: ${configFile}`);
+const { hostname } = require('os');
+const configFile = process.argv[2] || `./config.js.${hostname}`;
+const config = require(configFile);
+console.error(`config: ${configFile}`);
 
 const CACHE_EXPIRY_TIME = 5 * 60;
 const ALERT_EXPIRY_TIME = 5 * 60;
@@ -37,7 +37,7 @@ function display(config, type, sub, data) {
         data.forEach((item) =>
             console.error(`${item.timeFormatted} ${type.toUpperCase()}/${sub} [${item.type}] ${item.flight} ${item.text}${item.warn ? ' WARNING' : ''}`)
         );
-    else if (sub == 'remove') data.forEach((item) => console.error(`${item} ${type.toUpperCase()}/${sub}`));
+    //else if (sub == 'remove') data.forEach((item) => console.error(`${item} ${type.toUpperCase()}/${sub}`));
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -223,7 +223,7 @@ function alerts(processedData, stats) {
                         type: 'aircraft-' + key,
                         ...alertMeta(filterMap[key].format, aircraft),
                         flight: aircraft.flight,
-                        timeLast: time
+                        timeLast: time,
                     };
                     alertsActive[id] = alert;
                     return alert;
@@ -309,7 +309,7 @@ async function loop(config) {
                 display(config.display, 'alert', 'remove', alertInfo.alertsRemoved);
             }
             // XXX publishStatus/displayStatus
-            console.error(`${new Date().toISOString()} ALERT new=${alertInfo.alertsInserted.length}/all=${alertInfo.alertsActive.length}: ${alertStats()}`);
+            console.error(`${new Date().toISOString()} ALERT/status new=${alertInfo.alertsInserted.length}/all=${alertInfo.alertsActive.length}: ${alertStats()}`);
         } else console.error('No data received');
     } catch (error) {
         console.error(`Error in loop: ${error.message}`);

@@ -36,8 +36,8 @@ module.exports = {
         },
         specific: {
             patterns: [
-                { pattern: '^(TKF)[0-9]', category: 'royalty', description: 'The King\'s Flight' },
-		//
+                { pattern: '^(TKF)[0-9]', category: 'royalty', description: "The King's Flight" },
+                //
                 { pattern: '^(EXEC|STATE|GOV)[0-9]', category: 'government', description: 'Government flight' },
                 { pattern: '^CAF', category: 'government', description: 'Canadian Air Force' },
                 { pattern: '^RRF', category: 'government', description: 'French Republic flight' },
@@ -60,7 +60,7 @@ module.exports = {
     location: {
         address: 'SW1A 1AA',
         lat: 51.501126,
-        lon: -0.142390,
+        lon: -0.14239,
         alt: 15,
     },
     publish: {
