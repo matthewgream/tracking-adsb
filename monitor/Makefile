@@ -2,7 +2,7 @@
 SYSTEM = adsb
 TARGET = monitor
 HOSTNAME = $(shell hostname)
-SOURCES = $(TARGET) fetch *.js config.js.$(HOSTNAME)
+SOURCES = $(TARGET) fetch *.js config.$(HOSTNAME).js
 SCRIPTS = watcher
 
 ##

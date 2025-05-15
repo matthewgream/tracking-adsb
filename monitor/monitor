@@ -4,7 +4,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const { hostname } = require('os');
-const configFile = process.argv[2] || `./config.js.${hostname}`;
+const configFile = process.argv[2] || `./config.${hostname}.js`;
 const config = require(configFile);
 console.error(`config: ${configFile}`);
 
@@ -285,7 +285,7 @@ function alertMeta(format, aircraft) {
 function init(config) {
     console.error('***');
     console.error('config:', config);
-    if (config.airports?.override) airportData.apply(config.airports.override);
+    if (config.airports?.apply) airportData.apply(config.airports.apply);
     config.airports = airportData.findNearby(config.location.lat, config.location.lon, { distance: config.filters.vicinity.distance });
     const extra = { data: { airports: airportData, location: config.location }, format: { getStats_List, formatAltitude } };
     filterModules.forEach((module) => module.config(config.filters[module.id], extra));

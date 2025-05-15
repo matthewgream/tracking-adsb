@@ -5,7 +5,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/opt/tracking-adsb/monitor /opt/tracking-adsb/config.js.%H
+ExecStart=/opt/tracking-adsb/monitor /opt/tracking-adsb/config.%H.js
 TimeoutStopSec=15s
 KillMode=mixed
 Restart=on-failure

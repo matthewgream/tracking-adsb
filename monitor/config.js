@@ -4,7 +4,7 @@
 module.exports = {
     link: 'http://adsb.local/adsbx/data/aircraft.json',
     airports: {
-        override: {
+        apply: {
             EGLW: {
                 radius: 0.5,
                 height: 1500,
