@@ -1,0 +1,316 @@
+body,
+html {
+    margin: 0;
+    padding: 0;
+    font-family: 'Courier New', monospace;
+    background-color: #0a0a0a;
+    color: #33ff33;
+    position: relative;
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.log-container {
+    position: fixed;
+    top: 7.5%;
+    left: 5%;
+    width: 45%;
+    height: 87.5%;
+    border: 1px solid rgba(51, 255, 51, 0.4);
+    background-color: rgba(0, 10, 0, 0.2);
+    padding: 10px;
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    color: #7cff7c;
+    overflow: hidden;
+    z-index: 3;
+}
+.log-line {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin: 2px 0;
+    text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
+    opacity: 0.85;
+}
+
+.info-container {
+    position: fixed;
+    top: 7.5%;
+    right: 7.5%;
+    width: auto;
+    height: auto;
+    max-height: 50%;
+    border: 1px solid rgba(51, 255, 51, 0.4);
+    background-color: rgba(0, 10, 0, 0.8);
+    padding: 10px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: #6aff6a;
+    overflow: auto;
+    z-index: 6;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.7);
+}
+.info-section {
+    margin-bottom: 12px;
+}
+.info-section h3 {
+    margin: 0 0 5px 0;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(51, 255, 51, 0.3);
+    padding-bottom: 0px;
+}
+.info-link {
+    color: #8aff8a;
+    text-decoration: none;
+    display: block;
+    margin: 2px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.info-link:hover {
+    color: #ffffff;
+    text-shadow: 0 0 5px #33ff33;
+}
+
+.radar-bounds {
+    position: fixed;
+    top: 5%;
+    left: 7.5%;
+    right: 5%;
+    bottom: 5%;
+    border: 2px solid rgba(51, 255, 51, 0.7);
+    border-bottom: none;
+    background-color: rgba(0, 10, 0, 0.3);
+    z-index: 4;
+    pointer-events: none;
+    overflow: hidden;
+}
+.radar-container {
+    position: absolute;
+    bottom: -60vh;
+    right: -30vw;
+    width: 125vw;
+    height: 125vw;
+    border-radius: 50%;
+    border: 2px solid #33ff33;
+    box-shadow: 0 0 20px rgba(51, 255, 51, 0.3);
+    background-color: rgba(0, 10, 0, 0.5);
+    z-index: 5;
+    overflow: hidden;
+}
+.radar-footer {
+    position: fixed;
+    left: 7.5%;
+    right: 5%;
+    bottom: 5%;
+    height: 46px;
+    border: 2px solid rgba(51, 255, 51, 0.7);
+    background-color: rgba(0, 10, 0, 0.7);
+    z-index: 4;
+    padding: 5px 10px;
+    font-family: 'Courier New', monospace;
+    color: #33ff33;
+    font-size: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.radar-stats-row {
+    display: flex;
+    flex-direction: row;
+    margin-bottom: 4px;
+    align-items: flex-start;
+    justify-content: flex-start;
+    line-height: 1.5;
+}
+.stat-group {
+    margin-right: 5px;
+    white-space: nowrap;
+}
+.stat-separator {
+    margin: 0 5px;
+}
+.stat-label {
+    font-weight: bold;
+    margin-right: 3px;
+}
+.radar-line {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 62.5vw;
+    height: 3px;
+    background-color: #33ff33;
+    transform-origin: left center;
+    animation: radar-sweep 6s infinite linear;
+    box-shadow: 0 0 15px #33ff33;
+}
+.radar-circle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    border: 1px solid rgba(51, 255, 51, 0.5);
+}
+.radar-circle.c1 {
+    width: 30%;
+    height: 30%;
+}
+.radar-circle.c2 {
+    width: 60%;
+    height: 60%;
+}
+.radar-circle.c3 {
+    width: 90%;
+    height: 90%;
+}
+.radar-circle-label {
+    position: absolute;
+    color: #33ff33;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    font-weight: bold;
+    text-shadow: 0 0 4px #000;
+    z-index: 70;
+    background-color: rgba(0, 0, 0, 0);
+    padding: 2px 4px;
+}
+.radar-title {
+    position: fixed;
+    top: 2%;
+    left: 10%;
+    font-size: 20px;
+    font-weight: bold;
+    color: #33ff33;
+    text-shadow: 0 0 10px rgba(51, 255, 51, 0.7);
+    z-index: 10;
+    letter-spacing: 2px;
+}
+.radar-home {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    background-color: red;
+    border-radius: 50%;
+    z-index: 999;
+}
+.radar-blip {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background-color: #33ff33;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #33ff33;
+    z-index: 100;
+}
+.trail-point {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    z-index: 90;
+}
+.trail-line {
+    position: absolute;
+    height: 1px;
+    background-color: transparent;
+    z-index: 85;
+    background-image: linear-gradient(to right, rgba(51, 255, 51, 0.5) 50%, rgba(0, 0, 0, 0) 50%);
+    background-size: 6px 1px;
+    background-repeat: repeat-x;
+    transform-origin: 0 0;
+}
+.trail-line-normal {
+    background-image: linear-gradient(to right, rgba(51, 255, 51, 0.5) 50%, rgba(0, 0, 0, 0) 50%);
+    background-size: 6px 1px;
+    background-repeat: repeat-x;
+}
+.trail-line-landing {
+    background-image: linear-gradient(to right, rgba(255, 0, 0, 0.5) 50%, rgba(0, 0, 0, 0) 50%);
+    background-size: 6px 1px;
+    background-repeat: repeat-x;
+}
+.flight-info {
+    position: absolute;
+    color: #99ff99;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    font-weight: normal;
+    text-shadow: 0 0 3px #000;
+    white-space: nowrap;
+    pointer-events: none;
+    transform: translateY(-50%);
+    background-color: rgba(0, 10, 0, 0.25);
+    padding: 2px 4px;
+    border-radius: 2px;
+    //border: 1px solid #33ff33;
+    z-index: 100;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.airport-marker {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    z-index: 80;
+}
+.airport-marker:before,
+.airport-marker:after {
+    content: '';
+    position: absolute;
+    background-color: #ff0000;
+    left: 0;
+    top: 0;
+    width: 2px;
+    height: 10px;
+}
+.airport-marker:before {
+    transform: translate(4px) rotate(45deg);
+}
+.airport-marker:after {
+    transform: translate(4px) rotate(-45deg);
+}
+.airport-label {
+    position: absolute;
+    color: #ff0000;
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 85;
+    text-shadow: 1px 1px 2px #000;
+}
+.airport-circle {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px dashed #ff0000;
+    z-index: 75;
+    pointer-events: none;
+}
+.grid-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: linear-gradient(rgba(51, 255, 51, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(51, 255, 51, 0.1) 1px, transparent 1px);
+    background-size: 20px 20px;
+    pointer-events: none;
+    z-index: 2;
+}
+
+@keyframes radar-sweep {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}

@@ -1,0 +1,57 @@
+<html>
+    <head>
+        <meta charset="UTF-8" />
+        <title>Flight Tracker</title>
+        <link rel="stylesheet" type="text/css" href="radar-styles.css" />
+        <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
+        <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+        <link rel="alternate icon" type="image/png" href="favicon.png" />
+        <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+        <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+        <script src="config.js.adsb"></script>
+        <script src="airports-data.js"></script>
+        <script src="radar-script.js"></script>
+    </head>
+    <body>
+        <div class="grid-overlay"></div>
+        <div class="log-container">
+            <!-- Log entries will be populated by JavaScript -->
+        </div>
+        <div class="info-container">
+            <!-- Services information will be populated by JavaScript -->
+        </div>
+        <div class="radar-title">FLIGHT TRACKER</div>
+        <div class="radar-bounds">
+            <div class="radar-container">
+                <div class="radar-circle c1"></div>
+                <div class="radar-circle c2"></div>
+                <div class="radar-circle c3"></div>
+                <div class="radar-line"></div>
+                <!-- Blips and flight info will be added here by JavaScript -->
+            </div>
+        </div>
+        <div class="radar-footer">
+            <div class="radar-stats-row">
+                <div class="stat-group">
+                    <span class="stat-label">Updated:</span> <span class="stat-timestamp-value"><?php echo date('Y-m-d H:i:s'); ?></span>
+                </div>
+                <span class="stat-separator">•</span>
+                <div class="stat-group">
+                    <span class="stat-label">Flights: </span> total <span class="flights-total">-</span>, local <span class="flights-range-local">-</span>, min <span class="flights-range-min">-</span>, max
+                    <span class="flights-range-max">-</span>
+                </div>
+            </div>
+            <div class="radar-stats-row">
+                <div class="stat-group"><span class="stat-label">&lt;2500ft:</span> <span class="alt-low">-</span></div>
+                <span class="stat-separator">•</span>
+                <div class="stat-group"><span class="stat-label">2500-8000ft:</span> <span class="alt-medium">-</span></div>
+                <span class="stat-separator">•</span>
+                <div class="stat-group"><span class="stat-label">8000-22000ft:</span> <span class="alt-high">-</span></div>
+                <span class="stat-separator">•</span>
+                <div class="stat-group"><span class="stat-label">&gt;22000ft:</span> <span class="alt-very-high">-</span></div>
+                <span class="stat-separator">•</span>
+                <div class="stat-group"><span class="stat-label">min</span> <span class="alt-min">-</span>, <span class="stat-label">max</span> <span class="alt-max">-</span></div>
+            </div>
+        </div>
+    </body>
+</html>
