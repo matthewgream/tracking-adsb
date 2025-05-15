@@ -20,7 +20,9 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 const airportsData = require('../airports/airports-data.js');
 
 function airportATZradius(airport) {
-    return (airport.radius ? airport.radius : airport.iata && airport.iata.trim() !== '' ? 2.5 : 2.0) * 1.852;
+    if (airport.radius) return airport.radius; // km
+    if (airport.runwayLengthMax) return (airport.runwayLengthMax < 1850 ? 2.0 : 2.5) * 1.852;
+    return (airport.iata?.trim() !== '' ? 2.5 : 2.0) * 1.852;
 }
 function airportATZaltitude(airport) {
     return (airport.elevation || 0) + (airport.height || 2000);
