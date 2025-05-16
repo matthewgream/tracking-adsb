@@ -15,41 +15,34 @@ module.exports = {
         this.conf = conf;
         this.extra = extra;
         this.flights = this.conf.flights || [
-            // Government & VIP flights
-            { pattern: '^(EXEC|STATE|GOV)[0-9]', category: 'government', description: 'Government flight' },
-            { pattern: '^CAF', category: 'government', description: 'Canadian Air Force' },
-            { pattern: '^RRF', category: 'government', description: 'French Republic flight' },
-            { pattern: '^(BAW|VJT|G-)[A-Z]{4}', category: 'vip', description: 'Potential VIP flight' },
+            { field: 'flight', pattern: '^(TKF)[0-9]', category: 'royalty', description: "The King's Flight" },
+            //
+            { field: 'flight', pattern: '^(EXEC|STATE|GOV)[0-9]', category: 'government', description: 'Government flight' },
+            { field: 'flight', pattern: '^CAF', category: 'government', description: 'Canadian Air Force' },
+            { field: 'flight', pattern: '^RRF', category: 'government', description: 'French Republic flight' },
+            //{ pattern: '^(BAW|VJT|G-)[A-Z]{4}', category: 'vip', description: 'Potential VIP flight' },
             // Special operators
-            { pattern: '^(CKS|CPT|NPT|RCH|CMB|BOX)', category: 'special-ops', description: 'Special operations' },
-            { pattern: '^(DUKE|ASCOT|REACH|ROCKY)', category: 'military-transport', description: 'Military transport' },
+            { field: 'flight', pattern: '^(CKS|CPT|RCH)', category: 'special-ops', description: 'Special operations' }, // not BOX/CMB/NPT
+            { field: 'flight', pattern: '^(DUKE|ASCOT|REACH|ROCKY)', category: 'military-transport', description: 'Military transport' },
             // Test flights
-            { pattern: '^(N|D|G|F|HB)-[A-Z]{3}', category: 'test', description: 'Possible test flight' },
-            { pattern: '^(TEST|XCL|XCH|XAS)', category: 'test', description: 'Test flight' },
+            { field: 'flight', pattern: '^(N|D|G|F|HB)-[A-Z]{3}', category: 'test', description: 'Possible test flight' },
+            { field: 'flight', pattern: '^(TEST|XCL|XCH|XAS)', category: 'test', description: 'Test flight' },
             // Emergency services
-            { pattern: '^(HEMS|HELIMED|RESCUE)', category: 'emergency-services', description: 'Air ambulance' },
-            { pattern: '^(POLICE|NPAS)', category: 'emergency-services', description: 'Police aircraft' },
-            { pattern: '^(PIPELINE|SURVEY)', category: 'survey', description: 'Aerial survey' },
-            // Custom watchlist - add your own
-            { pattern: '^(RETRO|HISTORIC)', category: 'special-interest', description: 'Historic aircraft' },
+            { field: 'flight', pattern: '^(HEMS|HELIMED|RESCUE)', category: 'emergency-services', description: 'Air ambulance' },
+            { field: 'flight', pattern: '^(POLICE|NPAS)', category: 'emergency-services', description: 'Police aircraft' },
+            { field: 'flight', pattern: '^(PIPELINE|SURVEY)', category: 'survey', description: 'Aerial survey' },
+            // Custom watchlist
+            { field: 'flight', pattern: '^(RETRO|HISTORIC)', category: 'special-interest', description: 'Historic aircraft' },
+            // types
+            { field: 'category', pattern: 'B7', category: 'special-interest', description: 'Space aircraft' },
+            { field: 'category', pattern: '[CD][0-9]', category: 'special-interest', description: 'Special aircraft' },
         ];
-        this.flightsCompiled = this.flights.map((p) => ({
-            ...p,
-            regex: new RegExp(p.pattern, 'i'), // Case insensitive
-        }));
+        this.flightsCompiled = this.flights.map((p) => ({ ...p, regex: new RegExp(p.pattern, 'i') }));
     },
     preprocess: (aircraft) => {
-        aircraft.calculated.specific = { matches: [] };
-        if (!aircraft.flight) return;
-        const matches = this.flightsCompiled
-            .filter((p) => p.regex.test(aircraft.flight))
-            .map((p) => ({ pattern: p.pattern, category: p.category, description: p.description }));
-        if (matches.length > 0)
-            aircraft.calculated.specific = {
-                isSpecific: true,
-                matches,
-                primaryMatch: matches[0],
-            };
+        aircraft.calculated.specific = {
+            matches: this.flightsCompiled.filter((p) => aircraft?.[p.field] && p.regex.test(aircraft[p.field])).map(({ regex, ...rest }) => rest),
+        };
     },
     evaluate: (aircraft) => {
         return aircraft.calculated.specific.matches.length > 0;
@@ -66,32 +59,33 @@ module.exports = {
             'special-interest': 8,
             royalty: 9,
         };
-        const catA = categoryPriorities[a.calculated.specific.primaryMatch.category] || 999,
-            catB = categoryPriorities[b.calculated.specific.primaryMatch.category] || 999;
+        const catA = categoryPriorities[a.calculated.specific.matches?.[0].category] || 999,
+            catB = categoryPriorities[b.calculated.specific.matches?.[0].category] || 999;
         return catA !== catB ? catA - catB : a.calculated.distance - b.calculated.distance;
     },
     getStats: (aircrafts) => {
-        const specificAircraft = aircrafts.filter((a) => a.calculated.specific.matches.length > 0);
-        const byCategory = specificAircraft
-            .map((aircraft) => aircraft.calculated.specific.primaryMatch.category)
+        const list = aircrafts.filter((a) => a.calculated.specific.matches.length > 0);
+        const byCategory = list
+            .map((aircraft) => aircraft.calculated.specific.matches[0].category)
             .reduce((counts, category) => ({ ...counts, [category]: (counts[category] || 0) + 1 }), {});
         return {
-            ...this.extra.format.getStats_List('aircraft-specific', specificAircraft),
+            ...this.extra.format.getStats_List('aircraft-specific', list),
             byCategory,
         };
     },
     format: (aircraft) => {
-        const categoryFormatted = aircraft.calculated.specific.primaryMatch.category
+        const matchPrimary = aircraft.calculated.specific.matches[0];
+        const categoryFormatted = matchPrimary.category
             .split('-')
             .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
             .join(' ');
         return {
-            text: `${categoryFormatted}: ${aircraft.calculated.specific.primaryMatch.description}`,
+            text: `${categoryFormatted}: ${matchPrimary.description}`,
             warn: true,
             specificInfo: {
                 matches: aircraft.calculated.specific.matches,
-                category: aircraft.calculated.specific.primaryMatch.category,
-                description: aircraft.calculated.specific.primaryMatch.description,
+                category: matchPrimary.category,
+                description: matchPrimary.description,
             },
         };
     },

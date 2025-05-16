@@ -259,6 +259,46 @@ function alertStats() {
         .join(', ');
 }
 
+function getAircraftTypeDescription(categoryCode) {
+    if (!categoryCode) return '';
+    const categoryDescriptions = {
+        A0: 'No Information',
+        A1: 'Light (<15.5k lbs)',
+        A2: 'Small (15.5-75k lbs)',
+        A3: 'Large (75-300k lbs)',
+        A4: 'High-Vortex Large (B757)',
+        A5: 'Heavy (>300k lbs)',
+        A6: 'High Performance (>5g and >400 kts)',
+        A7: 'Rotorcraft',
+        B0: 'No Information',
+        B1: 'Glider/Sailplane',
+        B2: 'Lighter-than-air',
+        B3: 'Parachutist/Skydiver',
+        B4: 'Ultralight/hang-glider/paraglider',
+        B5: 'Reserved',
+        B6: 'UAV/Drone',
+        B7: 'Space/Trans-atmospheric vehicle',
+        C0: 'No Information',
+        C1: 'Surface - Emergency Vehicle',
+        C2: 'Surface - Service Vehicle',
+        C3: 'Point Obstacle (incl. balloons)',
+        C4: 'Cluster Obstacle',
+        C5: 'Line Obstacle',
+        C6: 'Reserved',
+        C7: 'Reserved',
+        D0: 'No Information',
+        D1: 'Reserved',
+        D2: 'Reserved',
+        D3: 'Reserved',
+        D4: 'Reserved',
+        D5: 'Reserved',
+        D6: 'Reserved',
+        D7: 'Reserved',
+    };
+    const description = categoryDescriptions[categoryCode];
+    return description ? `${categoryCode}: ${description}` : `<${categoryCode}>`;
+}
+
 function alertMeta(format, aircraft) {
     const aircraftType = aircraft.category || '';
     const priorityType =
@@ -270,7 +310,7 @@ function alertMeta(format, aircraft) {
     const positionInfo = aircraft.calculated.positionRelative
         ? ` (${aircraft.calculated.distance.toFixed(1)}km ${aircraft.calculated.positionRelative.cardinalBearing} ${formatAltitude(aircraft.calculated.altitude)})`
         : '';
-    const aircraftInfo = aircraftType ? ` <${aircraftType}>` : '';
+    const aircraftInfo = aircraftType ? ` <${getAircraftTypeDescription(aircraftType)}>` : '';
 
     const meta = {
         text: `detected`,

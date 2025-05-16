@@ -85,8 +85,10 @@ module.exports = {
                     groundPosition: aircraft.calculated.landing.groundPosition,
                 },
             };
+        const airport = aircraft.calculated.landing.airports[0];
+        const name = airport?.name ? (airport?.icao ? `${airport?.icao} [${airport?.name}]` : airport?.name) : airport?.icao || '';
         return {
-            text: `approaching ${aircraft.calculated.landing.airports[0]?.name || 'airport'}`,
+            text: `approaching ${name || 'airport'}`,
             landingInfo: {
                 groundPosition: aircraft.calculated.landing.groundPosition,
             },

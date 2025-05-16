@@ -70,24 +70,23 @@ module.exports = {
         return b.calculated.lifting.liftingScore - a.calculated.lifting.liftingScore;
     },
     getStats: (aircrafts) => {
-        const liftingAircraft = aircrafts.filter((a) => a.calculated.lifting.isLiftingOff);
-        const byAirport = liftingAircraft
+        const list = aircrafts.filter((a) => a.calculated.lifting.isLiftingOff);
+        const byAirport = list
             .filter((a) => a.calculated.lifting.hasKnownOrigin)
             .map((a) => a.calculated.lifting.departureAirport?.name || a.calculated.lifting.departureAirport?.icao)
             .reduce((counts, airport) => ({ ...counts, [airport]: (counts[airport] || 0) + 1 }), {});
         return {
-            ...this.extra.format.getStats_List('aircraft-lifting', liftingAircraft),
-            knownOriginCount: liftingAircraft.filter((a) => a.calculated.lifting.hasKnownOrigin).length,
-            unknownOriginCount: liftingAircraft.filter((a) => !a.calculated.lifting.hasKnownOrigin).length,
+            ...this.extra.format.getStats_List('aircraft-lifting', list),
+            knownOriginCount: list.filter((a) => a.calculated.lifting.hasKnownOrigin).length,
+            unknownOriginCount: list.filter((a) => !a.calculated.lifting.hasKnownOrigin).length,
             byAirport,
         };
     },
     format: (aircraft) => {
-        const airportLifting = aircraft.calculated.lifting.hasKnownOrigin
-            ? ` from ${aircraft.calculated.lifting.departureAirport.name || aircraft.calculated.lifting.departureAirport.icao}`
-            : '';
+        const airport = aircraft.calculated.lifting.hasKnownOrigin ? aircraft.calculated.lifting.departureAirport : null;
+        const name = airport?.name ? (airport?.icao ? `${airport?.icao} [${airport?.name}]` : airport?.name) : airport?.icao || '';
         return {
-            text: `climbing${airportLifting} at ${aircraft.calculated.lifting.climbRate} ft/min`,
+            text: `climbing${name ? ' from ' + name : ''} at ${aircraft.calculated.lifting.climbRate} ft/min`,
             liftingInfo: {
                 departureAirport: aircraft.calculated.lifting.departureAirport,
                 departureTime: aircraft.calculated.lifting.departureTime,

@@ -49,24 +49,27 @@ module.exports = {
         },
         specific: {
             flights: [
-                { pattern: '^(TKF)[0-9]', category: 'royalty', description: "The King's Flight" },
+                { field: 'flight', pattern: '^(TKF)[0-9]', category: 'royalty', description: "The King's Flight" },
                 //
-                { pattern: '^(EXEC|STATE|GOV)[0-9]', category: 'government', description: 'Government flight' },
-                { pattern: '^CAF', category: 'government', description: 'Canadian Air Force' },
-                { pattern: '^RRF', category: 'government', description: 'French Republic flight' },
-                { pattern: '^(BAW|VJT|G-)[A-Z]{4}', category: 'vip', description: 'Potential VIP flight' },
+                { field: 'flight', pattern: '^(EXEC|STATE|GOV)[0-9]', category: 'government', description: 'Government flight' },
+                { field: 'flight', pattern: '^CAF', category: 'government', description: 'Canadian Air Force' },
+                { field: 'flight', pattern: '^RRF', category: 'government', description: 'French Republic flight' },
+                //{ pattern: '^(BAW|VJT|G-)[A-Z]{4}', category: 'vip', description: 'Potential VIP flight' },
                 // Special operators
-                { pattern: '^(CKS|CPT|RCH)', category: 'special-ops', description: 'Special operations' }, // not BOX/CMB/NPT
-                { pattern: '^(DUKE|ASCOT|REACH|ROCKY)', category: 'military-transport', description: 'Military transport' },
+                { field: 'flight', pattern: '^(CKS|CPT|RCH)', category: 'special-ops', description: 'Special operations' }, // not BOX/CMB/NPT
+                { field: 'flight', pattern: '^(DUKE|ASCOT|REACH|ROCKY)', category: 'military-transport', description: 'Military transport' },
                 // Test flights
-                { pattern: '^(N|D|G|F|HB)-[A-Z]{3}', category: 'test', description: 'Possible test flight' },
-                { pattern: '^(TEST|XCL|XCH|XAS)', category: 'test', description: 'Test flight' },
+                { field: 'flight', pattern: '^(N|D|G|F|HB)-[A-Z]{3}', category: 'test', description: 'Possible test flight' },
+                { field: 'flight', pattern: '^(TEST|XCL|XCH|XAS)', category: 'test', description: 'Test flight' },
                 // Emergency services
-                { pattern: '^(HEMS|HELIMED|RESCUE)', category: 'emergency-services', description: 'Air ambulance' },
-                { pattern: '^(POLICE|NPAS)', category: 'emergency-services', description: 'Police aircraft' },
-                { pattern: '^(PIPELINE|SURVEY)', category: 'survey', description: 'Aerial survey' },
+                { field: 'flight', pattern: '^(HEMS|HELIMED|RESCUE)', category: 'emergency-services', description: 'Air ambulance' },
+                { field: 'flight', pattern: '^(POLICE|NPAS)', category: 'emergency-services', description: 'Police aircraft' },
+                { field: 'flight', pattern: '^(PIPELINE|SURVEY)', category: 'survey', description: 'Aerial survey' },
                 // Custom watchlist
-                { pattern: '^(RETRO|HISTORIC)', category: 'special-interest', description: 'Historic aircraft' },
+                { field: 'flight', pattern: '^(RETRO|HISTORIC)', category: 'special-interest', description: 'Historic aircraft' },
+                // types
+                { field: 'category', pattern: 'B7', category: 'special-interest', description: 'Space aircraft' },
+                { field: 'category', pattern: '[CD][0-9]', category: 'special-interest', description: 'Special aircraft' },
             ],
         },
     },

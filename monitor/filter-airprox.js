@@ -115,12 +115,12 @@ module.exports = {
         return catA !== catB ? catA - catB : a.calculated.airprox.horizontalDistance - b.calculated.airprox.horizontalDistance;
     },
     getStats: (aircrafts) => {
-        const airproxAircraft = aircrafts.filter((a) => a.calculated.airprox.hasAirprox);
-        const byCategory = airproxAircraft
+        const list = aircrafts.filter((a) => a.calculated.airprox.hasAirprox);
+        const byCategory = list
             .map((aircraft) => aircraft.calculated.airprox.riskCategory)
             .reduce((counts, category) => ({ ...counts, [category]: (counts[category] || 0) + 1 }), {});
         return {
-            ...this.extra.format.getStats_List('aircraft-airprox', airproxAircraft),
+            ...this.extra.format.getStats_List('aircraft-airprox', list),
             categoryA: byCategory['A'] || 0,
             categoryB: byCategory['B'] || 0,
             categoryC: byCategory['C'] || 0,
