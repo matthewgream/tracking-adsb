@@ -43,12 +43,6 @@ function display(config, type, sub, data) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const flightData = require('./data-flights.js');
-const airportData = require('./data-airports.js');
-
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
-
 function formatAltitude(altitude) {
     // Standard transition level in the UK is generally FL70 (7,000 ft)
     // London TMA uses varying transition altitudes, but 6,000 ft is common
@@ -133,7 +127,7 @@ function preprocess(config, data) {
     return data;
 }
 
-async function obtain(config) {
+async function obtain(flightData, config) {
     try {
         let data = await flightData.fetch(config.link);
         if (config.flights) data = preprocess(config.flights, data);
@@ -330,9 +324,14 @@ function alertMeta(format, aircraft) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+let flightData = null;
+
 function init(config) {
     console.error('***');
     console.error('config:', config);
+    flightData = require('./data-flights.js');
+    const airportData = require('./data-airports.js')({ source: config.airports.source });
+    console.error('airports:', airportData.length ());
     if (config.airports?.apply) airportData.apply(config.airports.apply);
     config.airports = airportData.findNearby(config.location.lat, config.location.lon, { distance: config.filters.vicinity.distance });
     const extra = { data: { airports: airportData, location: config.location }, format: { getStats_List, formatAltitude } };
@@ -343,8 +342,7 @@ function init(config) {
 
 async function loop(config) {
     try {
-        console.error('***');
-        const { data, status } = await obtain(config);
+        const { data, status } = await obtain(flightData, config);
         //console.error('status: ' + JSON.stringify(status));
         if (data) {
             const processedData = track(data);
@@ -359,9 +357,9 @@ async function loop(config) {
             }
             // XXX publishStatus/displayStatus
             console.error(
-                `${new Date().toISOString()} ALERT/status new=${alertInfo.alertsInserted.length}/all=${alertInfo.alertsActive.length}: ${alertStats()}`
+                `${new Date().toISOString()} ALERT/status new=${alertInfo.alertsInserted.length}/all=${alertInfo.alertsActive.length}/src=${data.aircraft.length}: ${alertStats()}`
             );
-        } else console.error('No data received');
+        } else console.error(`No data received: ${status.error ? status.error : 'no error details'}`);
     } catch (error) {
         console.error(`Error in loop: ${error.message}`);
     }

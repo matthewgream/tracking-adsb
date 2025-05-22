@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import json
 import sys
 import math
@@ -29,9 +31,7 @@ def main():
     result = {}
     for code, airport in airports.items():
         try:
-            airport_lat = float(airport["lat"])
-            airport_lon = float(airport["lon"])
-            distance = haversine(center_lat, center_lon, airport_lat, airport_lon)
+            distance = haversine(center_lat, center_lon, float(airport["lat"]), float(airport["lon"]))
 
             if distance <= radius_km:
                 result[code] = airport

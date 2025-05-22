@@ -41,7 +41,7 @@ html {
     right: 7.5%;
     width: auto;
     height: auto;
-    max-height: 50%;
+    max-height: 75%;
     border: 1px solid rgba(51, 255, 51, 0.4);
     background-color: rgba(0, 10, 0, 0.8);
     padding: 10px;
@@ -90,8 +90,8 @@ html {
 }
 .radar-container {
     position: absolute;
-    bottom: -60vh;
-    right: -30vw;
+    bottom: -80vh;
+    right: -10vw;
     width: 125vw;
     height: 125vw;
     border-radius: 50%;

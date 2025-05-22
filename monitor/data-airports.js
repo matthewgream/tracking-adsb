@@ -17,8 +17,6 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const airportsData = require('../airports/airports-data.js');
-
 function airportATZradius(airport) {
     if (airport.radius) return airport.radius; // km
     if (airport.runwayLengthMax) return (airport.runwayLengthMax < 1850 ? 2.0 : 2.5) * 1.852;
@@ -28,33 +26,42 @@ function airportATZaltitude(airport) {
     return (airport.elevation || 0) + (airport.height || 2000);
 }
 
-function findNearby(lat, lon, options = {}) {
-    return Object.entries(airportsData)
-        .filter(([_, airport]) => airport.lat && airport.lon)
-        .map(([_, airport]) => ({ ...airport, distance: calculateDistance(lat, lon, airport.lat, airport.lon) }))
-        .filter((airport) => {
-            if (options.distance && airport.distance <= options.distance) return true;
-            if (airport.distance > airportATZradius(airport)) return false;
-            if (options.altitude && airportATZaltitude(airport) < options.altitude) return false;
-            return true;
-        })
-        .sort((a, b) => a.distance - b.distance);
-}
+class airportsData {
+    constructor(options) {
+        this.data = require(options.source || 'airports-data.js');
+    }
 
-function apply(airports) {
-    Object.entries(airports).forEach(([icao, airport]) => {
-        if (!airportsData[icao]) airportsData[icao] = { icao };
-        Object.assign(airportsData[icao], airport);
-        console.error(`airportsData: override [${icao}]: ${JSON.stringify(airportsData[icao])}`);
-    });
+    length () {
+	 return Object.keys (this.data).length;
+    }
+
+    findNearby(lat, lon, options = {}) {
+        return Object.entries(this.data)
+            .filter(([_, airport]) => airport.lat && airport.lon)
+            .map(([_, airport]) => ({ ...airport, distance: calculateDistance(lat, lon, airport.lat, airport.lon) }))
+            .filter((airport) => {
+                if (options.distance && airport.distance <= options.distance) return true;
+                if (airport.distance > airportATZradius(airport)) return false;
+                if (options.altitude && airportATZaltitude(airport) < options.altitude) return false;
+                return true;
+            })
+            .sort((a, b) => a.distance - b.distance);
+    }
+
+    apply(airports) {
+        Object.entries(airports).forEach(([icao, airport]) => {
+            if (!this.data[icao]) this.data[icao] = { icao };
+            Object.assign(this.data[icao], airport);
+            console.error(`airportsData: override [${icao}]: ${JSON.stringify(this.data[icao])}`);
+        });
+    }
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-module.exports = {
-    apply,
-    findNearby,
+module.exports = function (options) {
+    return new airportsData(options);
 };
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------

@@ -3,31 +3,46 @@ $(document).ready(async function () {
     const maxRadarRange = 75;
     const flightTrackingServices = [
         {
+            id: 'flightaware',
             name: 'FLIGHTAWARE',
             links: [
-                { title: 'Website', url: 'http://flightaware.com' },
+                { title: 'Tracker (Online)', url: 'https://flightaware.com/skyaware' },
+                { title: 'Status (Online)', url: `https://flightaware.com/adsb/stats/user/mgream/#stats-${config.services.flightaware?.site}` },
                 { title: 'Tracker (Local)', url: 'skyaware' },
                 { title: 'Status (Local)', url: 'flightaware.html' },
             ],
         },
         {
+            id: 'flightradar24',
             name: 'FLIGHTRADAR24',
             links: [
-                { title: 'Website', url: 'https://www.flightradar24.com' },
+                { title: 'Tracker (Online)', url: `https://www.flightradar24.com/${homeLocation.lat.toFixed(2)},${homeLocation.lon.toFixed(2)}/8` },
+                { title: 'Status (Online)', url: `https://www.flightradar24.com/account/feed-stats/?id=${config.services.flightradar24?.id}` },
                 { title: 'Tracker (Local)', url: window.location.protocol + '//' + window.location.hostname + ':8754/tracked.html' },
                 { title: 'Status (Local)', url: window.location.protocol + '//' + window.location.hostname + ':8754/' },
             ],
         },
         {
+            id: 'adsbexchange',
             name: 'ADSB-EXCHANGE',
             links: [
-                { title: 'Website', url: 'https://www.adsbexchange.com' },
+                { title: 'Tracker (Online)', url: 'https://globe.adsbexchange.com' },
+                { title: 'Status (Online)', url: `https://www.adsbexchange.com/api/feeders/?feed=${config.services.adsbexchange?.feed}` },
                 { title: 'Tracker (Local)', url: 'adsbx' },
             ],
         },
         {
-            name: 'RADARBOX',
-            links: [{ title: 'Website', url: 'https://www.radarbox.com' }],
+            id: 'airnavradar',
+            name: 'AIRNAV.RADAR',
+            links: [
+                { title: 'Tracker (Online)', url: `https://www.airnavradar.com/@${homeLocation.lat},${homeLocation.lon},z8` },
+                { title: 'Status (Online)', url: `https://www.airnavradar.com/stations/${config.services.airnavradar?.station}` },
+            ],
+        },
+        {
+            id: 'opensky',
+            name: 'OPENSKY',
+            links: [{ title: 'Tracker (Online)', url: 'https://map.opensky-network.org' }],
         },
     ];
 
@@ -67,6 +82,7 @@ $(document).ready(async function () {
     function displayInfo() {
         const html =
             flightTrackingServices
+                .filter((service) => config.services?.[service])
                 .map((service) => `<div class="info-section"><h3>${service.name}</h3>` + service.links.map((link) => `<a href="${link.url}" class="info-link" target="_blank">${link.title}</a>`).join('') + `</div>`)
                 .join('') +
             `<div class="info-section">

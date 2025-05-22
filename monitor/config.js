@@ -4,6 +4,7 @@
 module.exports = {
     link: 'http://adsb.local/adsbx/data/aircraft.json',
     airports: {
+        source: '../airports/airports-data.js',
         apply: {
             EGLW: {
                 radius: 0.5,

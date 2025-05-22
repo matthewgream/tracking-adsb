@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+
+import socket
 import json
 import sys
 import math
@@ -29,19 +32,18 @@ def main():
     result = {}
     for code, airport in airports.items():
         try:
-            airport_lat = float(airport["lat"])
-            airport_lon = float(airport["lon"])
-            distance = haversine(center_lat, center_lon, airport_lat, airport_lon)
+            distance = haversine(center_lat, center_lon, float(airport["lat"]), float(airport["lon"]))
 
             if distance <= radius_km:
                 result[code] = airport
         except (KeyError, ValueError):
             continue
 
-    with open("airports-data.js", "w") as f:
+    with open(f"airports-data.{socket.gethostname()}.js", "w") as f:
         f.write("const airportsData = ")
-        f.write(json.dumps(result, indent=2))
+        f.write(json.dumps(result, indent=4))
         f.write(";\n\n")
+        f.write("module.exports = airportsData;\n\n")
 
 
 if __name__ == "__main__":
