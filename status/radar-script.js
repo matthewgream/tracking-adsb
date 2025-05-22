@@ -82,7 +82,7 @@ $(document).ready(async function () {
     function displayInfo() {
         const html =
             flightTrackingServices
-                .filter((service) => config.services?.[service])
+                .filter((service) => config.services?.[service.id])
                 .map((service) => `<div class="info-section"><h3>${service.name}</h3>` + service.links.map((link) => `<a href="${link.url}" class="info-link" target="_blank">${link.title}</a>`).join('') + `</div>`)
                 .join('') +
             `<div class="info-section">
