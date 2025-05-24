@@ -27,7 +27,9 @@ $(document).ready(async function () {
             name: 'ADSB-EXCHANGE',
             links: [
                 { title: 'Tracker (Online)', url: 'https://globe.adsbexchange.com' },
-                { title: 'Status (Online)', url: `https://www.adsbexchange.com/api/feeders/?feed=${config.services.adsbexchange?.feed}` },
+                { title: 'Status (Online)', url: `https://www.adsbexchange.com/api/feeders/?feed=${config.services.adsbexchange?.uid}` },
+                { title: 'Map (Online)', url: `https://globe.adsbexchange.com/?feed=${config.services.adsbexchange?.uid}` },
+                { title: 'MLAT (Online)', url: `https://map.adsbexchange.com/sync/feeder.html?${config.services.adsbexchange?.region}&${config.services.adsbexchange?.name}` },
                 { title: 'Tracker (Local)', url: 'adsbx' },
             ],
         },
@@ -46,6 +48,8 @@ $(document).ready(async function () {
         },
     ];
 
+    //
+
     var flightData = {};
     function fetchFlightData() {
         return $.ajax({ url: 'radar-data.php', type: 'GET', data: { type: 'flights' }, dataType: 'json', timeout: 5000, cache: false }).catch((e) => {
@@ -61,23 +65,70 @@ $(document).ready(async function () {
         });
     }
 
+    //
+
     var flightHistory = {};
+    var lastCleanTime = Date.now();
+    const maxFlights = 50,
+        maxHistory = 20,
+        maxLength = 5,
+        maxStorage = 4 * 1024 * 1024;
     function loadFlightHistory() {
         try {
             const savedHistory = localStorage.getItem('flightHistory');
-            if (savedHistory) flightHistory = JSON.parse(savedHistory);
+            if (savedHistory) {
+                flightHistory = JSON.parse(savedHistory);
+                cleanFlightHistory();
+            }
         } catch (e) {
-            console.error('Error loading flight history:', e);
+            console.error('flightHistory: loading error:', e);
             flightHistory = {};
         }
     }
+    function trimFlightHistory(size) {
+        const codes = Object.keys(flightHistory);
+        if (codes.length > size)
+            codes
+                .sort((a, b) => (flightHistory[b][0]?.timestamp || 0) - (flightHistory[a][0]?.timestamp || 0))
+                .slice(size)
+                .forEach((hexCode) => delete flightHistory[hexCode]);
+    }
+    function cleanFlightHistory() {
+        const now = Date.now();
+        const oneHourAgo = now - 60 * 60 * 1000;
+        let cleaned = false;
+        Object.keys(flightHistory)
+            .filter((hexCode) => flightHistory[hexCode].length > 0 && flightHistory[hexCode][0].timestamp < oneHourAgo)
+            .forEach((hexCode) => delete flightHistory[hexCode]);
+        trimFlightHistory(maxFlights);
+        lastCleanTime = now;
+    }
     function saveFlightHistory() {
         try {
+            if (JSON.stringify(flightHistory).length > maxStorage || Date.now() - lastCleanTime > 5 * 60 * 1000) cleanFlightHistory();
+            if (JSON.stringify(flightHistory).length > maxStorage)
+                Object.keys(flightHistory)
+                    .filter((hexCode) => flightHistory[hexCode].length > maxLength)
+                    .forEach((hexCode) => (flightHistory[hexCode] = flightHistory[hexCode].slice(0, maxLength)));
+            if (JSON.stringify(flightHistory).length > maxStorage) trimFlightHistory(maxHistory);
             localStorage.setItem('flightHistory', JSON.stringify(flightHistory));
         } catch (e) {
-            console.error('Error saving flight history:', e);
+            if (e.name === 'QuotaExceededError') {
+                console.error('flightHistory: storage quota exceeded, clearing');
+                flightHistory = {};
+                localStorage.removeItem('flightHistory');
+                try {
+                    localStorage.setItem('flightHistory', JSON.stringify(flightHistory));
+                } catch (e) {
+                    console.error('flightHistory: could not save after clearing:', e);
+                }
+            } else {
+                console.error('flightHistory: saving error:', e);
+            }
         }
     }
+
+    //
 
     function displayInfo() {
         const html =
@@ -324,6 +375,8 @@ $(document).ready(async function () {
         if (logLines?.length > 0) $('.log-container').html(logLines.map((line) => `<div class="log-line">${line}</div>`).join(''));
     }
 
+    //
+
     function updateData() {
         Promise.all([fetchFlightData(), fetchLogData()]).then(([flightDataNew, logLinesNew]) => {
             flightData = flightDataNew;
@@ -332,6 +385,8 @@ $(document).ready(async function () {
             displayLogs();
         });
     }
+
+    //
 
     $('.radar-container').css({ bottom: `${config.radar?.bottom === undefined ? -80 : config.radar.bottom}vh`, right: `${config.radar?.right === undefined ? -20 : config.radar.right}vw` });
     displayInfo();

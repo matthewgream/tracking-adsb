@@ -9,7 +9,7 @@ SCRIPTS = watcher
 
 prettier:
 	prettier --write $(SOURCES)
-	shfmt -i 4 -w $(SCRIPTS)
+	-shfmt -i 4 -w $(SCRIPTS)
 lint:
 	eslint $(SOURCES)
 test: $(TARGET)

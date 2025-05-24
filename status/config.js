@@ -17,7 +17,9 @@ const config = {
             id: 12345,
         },
         adsbexchange: {
-            feed: 'xxxxx_yyyyyy',
+            uid: 'xxxxx_yyyyyy',
+            name: 'adsb',
+            region: 20,
         },
         airnavradar: {
             station: 'EXTRPI123456',

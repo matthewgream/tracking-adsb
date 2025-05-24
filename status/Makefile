@@ -2,7 +2,7 @@
 SOURCES = airports-data.js config.js radar-script.js 
 
 prettier:
-	prettier --write $(SOURCES) *.mjs
+	prettier --write $(SOURCES)
 lint:
 	eslint $(SOURCES)
 
