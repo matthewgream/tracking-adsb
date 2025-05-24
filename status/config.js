@@ -5,10 +5,10 @@ const config = {
         lon: -0.14239,
         alt: 15,
     },
-	radar: {
-		bottom: -70,
-		right: -20
-	},
+    radar: {
+        bottom: -70,
+        right: -20,
+    },
     services: {
         flightaware: {
             site: 123456,

@@ -31,8 +31,8 @@ class airportsData {
         this.data = require(options.source || 'airports-data.js');
     }
 
-    length () {
-	 return Object.keys (this.data).length;
+    length() {
+        return Object.keys(this.data).length;
     }
 
     findNearby(lat, lon, options = {}) {

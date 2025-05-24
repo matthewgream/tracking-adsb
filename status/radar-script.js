@@ -332,8 +332,7 @@ $(document).ready(async function () {
         });
     }
 
-
-    $('.radar-container').css ({ bottom: `${config.radar?.bottom === null ? -80 : config.radar.bottom}vh`, right: `${config.radar?.right === null ? -20 : config.radar.right}vw` });
+    $('.radar-container').css({ bottom: `${config.radar?.bottom === null ? -80 : config.radar.bottom}vh`, right: `${config.radar?.right === null ? -20 : config.radar.right}vw` });
     displayInfo();
     displayRadarHome();
     displayRadarLabels();

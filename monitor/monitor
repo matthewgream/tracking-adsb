@@ -331,7 +331,7 @@ function init(config) {
     console.error('config:', config);
     flightData = require('./data-flights.js');
     const airportData = require('./data-airports.js')({ source: config.airports.source });
-    console.error('airports:', airportData.length ());
+    console.error('airports:', airportData.length());
     if (config.airports?.apply) airportData.apply(config.airports.apply);
     config.airports = airportData.findNearby(config.location.lat, config.location.lon, { distance: config.filters.vicinity.distance });
     const extra = { data: { airports: airportData, location: config.location }, format: { getStats_List, formatAltitude } };
