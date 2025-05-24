@@ -79,9 +79,9 @@ async function main() {
             const aircraft = calculateAircraft(data.aircraft);
             aircraft.forEach((aircraft) => console.log(aircraft));
         }
-    } catch (error) {
-        console.error(`Error: ${error.message}`);
-        process.exit(1);
+    } catch (e) {
+        console.error(`Error: ${e.message}`);
+        process.exit(1); // eslint-disable-line n/no-process-exit
     }
 }
 

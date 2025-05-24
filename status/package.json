@@ -18,8 +18,5 @@
         "eslint-plugin-sonarjs": "^3.0.2",
         "eslint-plugin-ternary": "^2.0.0",
         "eslint-plugin-unicorn": "^59.0.1"
-    },
-    "dependencies": {
-        "mqtt": "^5.13.0"
     }
 }

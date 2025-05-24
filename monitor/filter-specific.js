@@ -41,7 +41,7 @@ module.exports = {
     },
     preprocess: (aircraft) => {
         aircraft.calculated.specific = {
-            matches: this.flightsCompiled.filter((p) => aircraft?.[p.field] && p.regex.test(aircraft[p.field])).map(({ regex, ...rest }) => rest),
+            matches: this.flightsCompiled.filter((p) => aircraft?.[p.field] && p.regex.test(aircraft[p.field])).map(({ regex, ...rest }) => rest), // eslint-disable-line no-unused-vars
         };
     },
     evaluate: (aircraft) => {
@@ -61,7 +61,7 @@ module.exports = {
         };
         const catA = categoryPriorities[a.calculated.specific.matches?.[0].category] || 999,
             catB = categoryPriorities[b.calculated.specific.matches?.[0].category] || 999;
-        return catA !== catB ? catA - catB : a.calculated.distance - b.calculated.distance;
+        return catA === catB ? a.calculated.distance - b.calculated.distance : catA - catB;
     },
     getStats: (aircrafts) => {
         const list = aircrafts.filter((a) => a.calculated.specific.matches.length > 0);

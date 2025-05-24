@@ -7,7 +7,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 /*function detectIcingConditions(aircraft) {
-    if (aircraft.oat === undefined || !aircraft.calculated?.altitude) return null;
+    if (aircraft.oat === undefined || !aircraft.calculated?.altitude) return undefined;
     // Potential icing conditions: temps between -15°C and +3°C with visible moisture
     // We don't have moisture data, so we'll use altitude bands where moisture is likely
     const inPotentialIcingTemp = aircraft.oat > -15 && aircraft.oat < 3,
@@ -18,11 +18,11 @@
             severity: 'medium',
             details: `OAT ${aircraft.oat}°C at ${aircraft.calculated.altitude.toFixed(0)} ft`,
         };
-    return null;
+    return undefined;
 }*/
 
 /*function detectSeverIcingRisk(aircraft) {
-    if (aircraft.oat === undefined || !aircraft.calculated?.altitude) return null;
+    if (aircraft.oat === undefined || !aircraft.calculated?.altitude) return undefined;
     // Supercooled large droplet (SLD) icing risk
     if (aircraft.oat > -10 && aircraft.oat < 0 && aircraft.calculated.altitude < 15000)
         return {
@@ -30,11 +30,11 @@
             severity: 'high',
             details: `SLD risk ${aircraft.oat}°C at ${aircraft.calculated.altitude.toFixed(0)} ft`,
         };
-    return null;
+    return undefined;
 }*/
 
 function detectTurbulence(verticalRates) {
-    if (!verticalRates || verticalRates.length < 5) return null;
+    if (!verticalRates || verticalRates.length < 5) return undefined;
     const maxRate = Math.max(...verticalRates),
         minRate = Math.min(...verticalRates),
         variation = maxRate - minRate;
@@ -49,11 +49,11 @@ function detectTurbulence(verticalRates) {
             details: `vertical rate ${stdDev.toFixed(0)} ft/min`,
         };
     }
-    return null;
+    return undefined;
 }
 
 function detectStrongWinds(aircraft) {
-    if (!aircraft.gs || !aircraft.tas || !aircraft.calculated?.altitude) return null;
+    if (!aircraft.gs || !aircraft.tas || !aircraft.calculated?.altitude) return undefined;
     if (aircraft.calculated.altitude > 20000) {
         const difference = Math.abs(aircraft.gs - aircraft.tas);
         if (difference > 100)
@@ -63,11 +63,11 @@ function detectStrongWinds(aircraft) {
                 details: `${difference.toFixed(0)} kts GS/TAS difference`,
             };
     }
-    return null;
+    return undefined;
 }
 
 function detectTemperatureInversion(aircraft) {
-    if (aircraft.oat === undefined || !aircraft.calculated?.altitude) return null;
+    if (aircraft.oat === undefined || !aircraft.calculated?.altitude) return undefined;
     // Standard atmosphere temperature lapse rate is roughly 2°C per 1000ft
     const expectedTemp = 15 - (aircraft.calculated.altitude / 1000) * 2,
         tempDeviation = aircraft.oat - expectedTemp;
@@ -78,11 +78,11 @@ function detectTemperatureInversion(aircraft) {
             severity: 'low',
             details: `${tempDeviation > 0 ? '+' : ''}${tempDeviation.toFixed(0)}°C from ISA`,
         };
-    return null;
+    return undefined;
 }
 
 function detectWeatherHolding(aircraft) {
-    if (!aircraft.calculated?.in_holding) return null;
+    if (!aircraft.calculated?.in_holding) return undefined;
     return {
         type: 'weather-holding',
         severity: 'medium',
@@ -193,7 +193,7 @@ module.exports = {
         );
         const text =
             Object.entries(counts)
-                .map(([type, count]) => `${type}${count > 1 ? `:${count}` : ''}`)
+                .map(([type, count]) => `${type}${count > 1 ? ':' + count : ''}`)
                 .join(', ') + (count == 1 ? ` (${aircraft.calculated.weather.conditions[0].details})` : ` (...)`);
 
         return {

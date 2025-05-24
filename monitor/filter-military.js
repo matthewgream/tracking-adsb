@@ -76,7 +76,7 @@ module.exports = {
     preprocess: (aircraft) => {
         aircraft.calculated.is_military = false;
         if (aircraft.flight && this.militaryPrefixes.some((prefix) => aircraft.flight.trim().startsWith(prefix))) aircraft.calculated.is_military = true;
-        if (aircraft.flight && /^[A-Z]{4}[0-9]{2}$/.test(aircraft.flight)) aircraft.calculated.is_military = true;
+        if (aircraft.flight && /^[A-Z]{4}\d{2}$/.test(aircraft.flight)) aircraft.calculated.is_military = true;
     },
     evaluate: (aircraft) => {
         return aircraft.calculated.is_military;

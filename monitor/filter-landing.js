@@ -66,7 +66,7 @@ module.exports = {
     sort: (a, b) => {
         const aIsUnexpected = !a.calculated.landing.isPossibleLanding,
             bIsUnexpected = !b.calculated.landing.isPossibleLanding;
-        return aIsUnexpected !== bIsUnexpected ? (aIsUnexpected ? -1 : 1) : a.calculated.landing.groundSeconds - b.calculated.landing.groundSeconds;
+        return aIsUnexpected === bIsUnexpected ? a.calculated.landing.groundSeconds - b.calculated.landing.groundSeconds : aIsUnexpected ? -1 : 1;
     },
     getStats: (aircrafts) => {
         const list = aircrafts.filter((a) => a.calculated.landing.willIntersectGround);

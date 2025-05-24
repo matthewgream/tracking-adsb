@@ -6,7 +6,7 @@ const helpers = require('./filter-helpers.js');
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const DEFAULT_HORIZONTAL_THRESHOLD = 1.0; // NM, converted to km
+const DEFAULT_HORIZONTAL_THRESHOLD = 1; // NM, converted to km
 const DEFAULT_VERTICAL_THRESHOLD = 1000; // feet
 //const DEFAULT_AIRPORT_EXCLUSION_RADIUS = 5; // km - don't report airprox near airports
 const DEFAULT_CLOSURE_RATE_THRESHOLD = 400; // knots - high closure rate increases severity
@@ -41,8 +41,7 @@ function detectAirprox(aircraft, aircraftList, horizontalThreshold, verticalThre
     const horizontalDistance = helpers.calculateDistance(aircraft.lat, aircraft.lon, otherAircraft.lat, otherAircraft.lon),
         verticalSeparation = Math.abs(aircraft.calculated.altitude - otherAircraft.calculated.altitude);
 
-    let closureRate = null,
-        closureTime = null;
+    let closureRate, closureTime;
     if (aircraft.track && aircraft.gs && otherAircraft.track && otherAircraft.gs) {
         const track1Rad = helpers.track2rad(aircraft.track),
             track2Rad = helpers.track2rad(otherAircraft.track);
@@ -52,7 +51,7 @@ function detectAirprox(aircraft, aircraftList, horizontalThreshold, verticalThre
             vy2 = otherAircraft.gs * Math.sin(track2Rad);
         const relVx = vx2 - vx1,
             relVy = vy2 - vy1;
-        closureRate = Math.sqrt(relVx * relVx + relVy * relVy);
+        closureRate = Math.hypot(relVx * relVx + relVy * relVy);
         const bearingRad = helpers.deg2rad(helpers.calculateBearing(aircraft.lat, aircraft.lon, otherAircraft.lat, otherAircraft.lon));
         const closingVelocity = relVx * Math.cos(bearingRad) + relVy * Math.sin(bearingRad);
         if (Math.abs(closingVelocity) > 0.1) closureTime = (horizontalDistance * 1000) / (closingVelocity * 0.514444); // 0.514444 m/s per knot
@@ -63,7 +62,7 @@ function detectAirprox(aircraft, aircraftList, horizontalThreshold, verticalThre
         riskCategory = 'A'; // Serious risk of collision
     else if (horizontalDistance < nmToKm(0.5) && verticalSeparation < 500)
         riskCategory = 'B'; // Safety not assured
-    else if (horizontalDistance < nmToKm(1.0))
+    else if (horizontalDistance < nmToKm(1))
         riskCategory = 'C'; // No risk of collision
     else riskCategory = 'D'; // Risk not determined
     if (closureRate && closureRate > DEFAULT_CLOSURE_RATE_THRESHOLD) {
@@ -112,7 +111,7 @@ module.exports = {
         const categoryOrder = { A: 0, B: 1, C: 2, D: 3 };
         const catA = categoryOrder[a.calculated.airprox.riskCategory],
             catB = categoryOrder[b.calculated.airprox.riskCategory];
-        return catA !== catB ? catA - catB : a.calculated.airprox.horizontalDistance - b.calculated.airprox.horizontalDistance;
+        return catA === catB ? a.calculated.airprox.horizontalDistance - b.calculated.airprox.horizontalDistance : catA - catB;
     },
     getStats: (aircrafts) => {
         const list = aircrafts.filter((a) => a.calculated.airprox.hasAirprox);

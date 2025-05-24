@@ -19,14 +19,14 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
 function airportATZradius(airport) {
     if (airport.radius) return airport.radius; // km
-    if (airport.runwayLengthMax) return (airport.runwayLengthMax < 1850 ? 2.0 : 2.5) * 1.852;
-    return (airport.iata?.trim() !== '' ? 2.5 : 2.0) * 1.852;
+    if (airport.runwayLengthMax) return (airport.runwayLengthMax < 1850 ? 2 : 2.5) * 1.852;
+    return (airport.iata?.trim() === '' ? 2 : 2.5) * 1.852;
 }
 function airportATZaltitude(airport) {
     return (airport.elevation || 0) + (airport.height || 2000);
 }
 
-class airportsData {
+class AirportsData {
     constructor(options) {
         this.data = require(options.source || 'airports-data.js');
     }
@@ -61,7 +61,7 @@ class airportsData {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 module.exports = function (options) {
-    return new airportsData(options);
+    return new AirportsData(options);
 };
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------

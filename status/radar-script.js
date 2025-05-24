@@ -48,15 +48,15 @@ $(document).ready(async function () {
 
     var flightData = {};
     function fetchFlightData() {
-        return $.ajax({ url: 'radar-data.php', type: 'GET', data: { type: 'flights' }, dataType: 'json', timeout: 5000, cache: false }).catch((error) => {
-            console.error('Error fetching flight data:', error);
+        return $.ajax({ url: 'radar-data.php', type: 'GET', data: { type: 'flights' }, dataType: 'json', timeout: 5000, cache: false }).catch((e) => {
+            console.error('Error fetching flight data:', e);
             return {};
         });
     }
     var logLines = [];
     function fetchLogData() {
-        return $.ajax({ url: 'radar-data.php', type: 'GET', data: { type: 'logs' }, dataType: 'json', timeout: 5000, cache: false }).catch((error) => {
-            console.error('Error fetching log data:', error);
+        return $.ajax({ url: 'radar-data.php', type: 'GET', data: { type: 'logs' }, dataType: 'json', timeout: 5000, cache: false }).catch((e) => {
+            console.error('Error fetching log data:', e);
             return [];
         });
     }
@@ -102,7 +102,7 @@ $(document).ready(async function () {
         [
             { class: 'c1', percent: 30, label: Math.round(maxRadarRange * (1 / 3)) + 'km' },
             { class: 'c2', percent: 60, label: Math.round(maxRadarRange * (2 / 3)) + 'km' },
-            { class: 'c3', percent: 90, label: Math.round(maxRadarRange * (3 / 3)) + 'km' },
+            { class: 'c3', percent: 90, label: maxRadarRange + 'km' },
         ].forEach((circle) => {
             const labelX = 50 + (circle.percent / 2) * Math.sin((225 * Math.PI) / 180),
                 labelY = 50 - (circle.percent / 2) * Math.cos((225 * Math.PI) / 180);
@@ -123,11 +123,11 @@ $(document).ready(async function () {
     }
     function airportATZradius(airport) {
         if (airport.radius) return airport.radius; // km
-        if (airport.runwayLengthMax) return (airport.runwayLengthMax < 1850 ? 2.0 : 2.5) * 1.852;
-        return (airport.iata?.trim() !== '' ? 2.5 : 2.0) * 1.852;
+        if (airport.runwayLengthMax) return (airport.runwayLengthMax < 1850 ? 2 : 2.5) * 1.852;
+        return (airport.iata?.trim() === '' ? 2 : 2.5) * 1.852;
     }
     function isNearAirport(lat, lon, altitude) {
-        return altitude < 2000 && Object.entries(findAirportsInRange(homeLocation.lat, homeLocation.lon, maxRadarRange)).some(([code, airport]) => calculateGeoDistance(lat, lon, airport.lat, airport.lon) <= airportATZradius(airport));
+        return altitude < 2000 && Object.entries(findAirportsInRange(homeLocation.lat, homeLocation.lon, maxRadarRange)).some(([_, airport]) => calculateGeoDistance(lat, lon, airport.lat, airport.lon) <= airportATZradius(airport));
     }
     function displayRadarAirports() {
         Object.entries(findAirportsInRange(homeLocation.lat, homeLocation.lon, maxRadarRange)).forEach(([code, airport]) => {
@@ -161,13 +161,13 @@ $(document).ready(async function () {
         const b = 2 * (dx * (x1 - centerX) + dy * (y1 - centerY));
         const c = (x1 - centerX) * (x1 - centerX) + (y1 - centerY) * (y1 - centerY) - radius * radius;
         const discriminant = b * b - 4 * a * c;
-        if (discriminant < 0) return null;
+        if (discriminant < 0) return undefined;
         const t1 = (-b + Math.sqrt(discriminant)) / (2 * a),
             t2 = (-b - Math.sqrt(discriminant)) / (2 * a);
         let t;
         if (t1 >= 0 && t1 <= 1) t = t1;
         else if (t2 >= 0 && t2 <= 1) t = t2;
-        else return null;
+        else return undefined;
         return {
             x: x1 + t * dx,
             y: y1 + t * dy,
@@ -212,14 +212,14 @@ $(document).ready(async function () {
         };
         const updateTime = Date.now();
         Object.entries(flightData)
-            .filter(([hexCode, flight]) => flight && Array.isArray(flight) && flight.length >= 17)
+            .filter(([_, flight]) => flight && Array.isArray(flight) && flight.length >= 17)
             .forEach(([hexCode, flight]) => {
-                const lat = parseFloat(flight[1]),
-                    lon = parseFloat(flight[2]);
-                if (!isNaN(lat) && !isNaN(lon) && isFinite(lat) && isFinite(lon) && !(lat === 0 && lon === 0)) {
+                const lat = Number.parseFloat(flight[1]),
+                    lon = Number.parseFloat(flight[2]);
+                if (!Number.isNaN(lat) && !Number.isNaN(lon) && Number.isFinite(lat) && Number.isFinite(lon) && !(lat === 0 && lon === 0)) {
                     const distance = calculateGeoDistance(homeLocation.lat, homeLocation.lon, lat, lon),
                         bearing = calculateGeoAngle(homeLocation.lat, homeLocation.lon, lat, lon);
-                    const altitude = flight[4] ? parseInt(flight[4]) : 0;
+                    const altitude = flight[4] ? Number.parseInt(flight[4]) : 0;
                     const callsign = flight[16] || hexCode,
                         squawk = flight[6];
                     if (altitude <= 2500) altitudeCounts.low++;
@@ -245,8 +245,8 @@ $(document).ready(async function () {
         const flightsTotal = Object.keys(flightData).length,
             flightsRadar = visibleFlights.length;
         Object.entries(flightHistory)
-            .filter(([hexCode, history]) => history.length >= 2)
-            .forEach(([hexCode, history]) => {
+            .filter(([_, history]) => history.length >= 2)
+            .forEach(([_, history]) => {
                 for (let i = 1; i < history.length; i++) {
                     const pos = history[i],
                         prevPos = history[i - 1];
@@ -275,6 +275,7 @@ $(document).ready(async function () {
                         else continue;
                     }
                     if (prevPos.distance > maxRadarRange) {
+                        // eslint-disable-next-line sonarjs/arguments-order
                         const intersection = findIntersection(x2, y2, x1, y1, 50, 50, 45);
                         if (intersection) (x2 = intersection.x), (y2 = intersection.y);
                         else continue;
@@ -301,7 +302,7 @@ $(document).ready(async function () {
             $('.radar-container').append(blip);
             const info = $('<div class="flight-info"></div>');
             info.html(flight.callsign + (flight.squawk ? ' (' + flight.squawk + ')' : '') + '<br>' + (flight.altitude > 0 ? flight.altitude : '- ') + 'ft ' + flight.distance.toFixed(1) + 'km');
-            info.css({ left: flight.radarX + 0.5 + '%', top: flight.radarY + 1.0 + '%', 'z-index': 200 + index });
+            info.css({ left: flight.radarX + 0.5 + '%', top: flight.radarY + 1 + '%', 'z-index': 200 + index });
             if (flight.isInATZ) info.css('color', '#ff9999');
             $('.radar-container').append(info);
         });
@@ -324,15 +325,15 @@ $(document).ready(async function () {
     }
 
     function updateData() {
-        Promise.all([fetchFlightData(), fetchLogData()]).then(([newFlightData, newLogLines]) => {
-            flightData = newFlightData;
-            logLines = newLogLines;
+        Promise.all([fetchFlightData(), fetchLogData()]).then(([flightDataNew, logLinesNew]) => {
+            flightData = flightDataNew;
+            logLines = logLinesNew;
             displayRadarFlights();
             displayLogs();
         });
     }
 
-    $('.radar-container').css({ bottom: `${config.radar?.bottom === null ? -80 : config.radar.bottom}vh`, right: `${config.radar?.right === null ? -20 : config.radar.right}vw` });
+    $('.radar-container').css({ bottom: `${config.radar?.bottom === undefined ? -80 : config.radar.bottom}vh`, right: `${config.radar?.right === undefined ? -20 : config.radar.right}vw` });
     displayInfo();
     displayRadarHome();
     displayRadarLabels();

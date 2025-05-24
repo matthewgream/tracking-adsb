@@ -15,7 +15,7 @@ const CYCLE_SCAN_TIME = 30;
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-let mqtt = null;
+let mqtt;
 function publishInit(config) {
     if (!mqtt && config.mqtt && config.mqtt.enabled) {
         mqtt = require('./function-mqtt.js')(config.mqtt);
@@ -47,7 +47,7 @@ function formatAltitude(altitude) {
     // Standard transition level in the UK is generally FL70 (7,000 ft)
     // London TMA uses varying transition altitudes, but 6,000 ft is common
     const transitionLevel = 7000;
-    if (altitude === null || altitude === undefined) return 'n/a';
+    if (altitude === undefined) return 'n/a';
     if (altitude >= transitionLevel) return `FL${Math.round(altitude / 100)}`;
     if (altitude === 0) return 'ground';
     return `${altitude.toLocaleString()} ft`;
@@ -113,14 +113,14 @@ function filterAircraft(lat, lon, aircraftList) {
         }
         const aHighestPriority = Math.min(...aFilters.map((f) => f.priority)),
             bHighestPriority = Math.min(...bFilters.map((f) => f.priority));
-        return aHighestPriority !== bHighestPriority ? aHighestPriority - bHighestPriority : filters.find((f) => f.priority === aHighestPriority).sort(a, b);
+        return aHighestPriority === bHighestPriority ? filters.find((f) => f.priority === aHighestPriority).sort(a, b) : aHighestPriority - bHighestPriority;
     });
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-let preprocess_exclude = null;
+let preprocess_exclude;
 function preprocess(config, data) {
     if (!preprocess_exclude && config.exclude) preprocess_exclude = new Set(config.exclude);
     if (preprocess_exclude && data.aircraft) data.aircraft = data.aircraft.filter((aircraft) => !aircraft.flight || !preprocess_exclude.has(aircraft.flight));
@@ -140,11 +140,10 @@ async function obtain(flightData, config) {
         const now = Date.now();
         aircraft.forEach((a) => (a.calculated.timestamp_updated = now));
         return { data: { ...data, aircraft }, status };
-    } catch (error) {
+    } catch (e) {
         return {
-            data: null,
             status: {
-                error: error.message,
+                error: e.message,
             },
         };
     }
@@ -163,27 +162,16 @@ function track(data) {
             .forEach((aircraft) => {
                 const hex = aircraft.hex;
                 currentHexes.add(hex);
-                if (!cache[hex])
-                    cache[hex] = {
-                        ...aircraft,
-                        processing: {
-                            first_seen: now,
-                            appearances: 1,
-                            missed_updates: 0,
-                            consecutive_misses: 0,
-                            consecutive_appearances: 1,
-                        },
-                    };
-                else
-                    cache[hex] = {
-                        ...aircraft,
-                        processing: {
-                            ...cache[hex].processing,
-                            appearances: cache[hex].processing.appearances + 1,
-                            consecutive_misses: 0,
-                            consecutive_appearances: cache[hex].processing.consecutive_appearances + 1,
-                        },
-                    };
+                cache[hex] = {
+                    ...aircraft,
+                    processing: {
+                        first_seen: cache?.[hex]?.processing?.first_seen || now,
+                        missed_updates: cache?.[hex]?.processing?.missed_updates || 0,
+                        appearances: (cache?.[hex]?.processing?.appearances || 0) + 1,
+                        consecutive_misses: 0,
+                        consecutive_appearances: (cache?.[hex]?.processing?.consecutive_appearances || 0) + 1,
+                    },
+                };
             });
         Object.entries(cache)
             .filter(([hex, entry]) => !currentHexes.has(hex) && now - entry.calculated.timestamp_updated <= CACHE_EXPIRY_TIME * 1000)
@@ -324,7 +312,7 @@ function alertMeta(format, aircraft) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-let flightData = null;
+let flightData;
 
 function init(config) {
     console.error('***');
@@ -359,9 +347,9 @@ async function loop(config) {
             console.error(
                 `${new Date().toISOString()} ALERT/status new=${alertInfo.alertsInserted.length}/all=${alertInfo.alertsActive.length}/src=${data.aircraft.length}: ${alertStats()}`
             );
-        } else console.error(`No data received: ${status.error ? status.error : 'no error details'}`);
-    } catch (error) {
-        console.error(`Error in loop: ${error.message}`);
+        } else console.error(`No data received: ${status.error || 'no error details'}`);
+    } catch (e) {
+        console.error(`Error in loop: ${e.message}`);
     }
 }
 

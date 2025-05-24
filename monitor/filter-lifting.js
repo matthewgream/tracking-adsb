@@ -83,7 +83,7 @@ module.exports = {
         };
     },
     format: (aircraft) => {
-        const airport = aircraft.calculated.lifting.hasKnownOrigin ? aircraft.calculated.lifting.departureAirport : null;
+        const airport = aircraft.calculated.lifting.hasKnownOrigin ? aircraft.calculated.lifting.departureAirport : undefined;
         const name = airport?.name ? (airport?.icao ? `${airport?.icao} [${airport?.name}]` : airport?.name) : airport?.icao || '';
         return {
             text: `climbing${name ? ' from ' + name : ''} at ${aircraft.calculated.lifting.climbRate} ft/min`,

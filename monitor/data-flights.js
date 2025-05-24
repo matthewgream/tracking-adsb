@@ -8,6 +8,7 @@ function fixup(data) {
     return data;
 }
 
+// eslint-disable-next-line no-redeclare
 function fetch(link) {
     return new Promise((resolve, reject) => {
         const protocol = link.startsWith('https') ? require('https') : require('http');
@@ -16,7 +17,9 @@ function fetch(link) {
                 const { statusCode } = res;
                 let error;
                 if (statusCode !== 200) error = new Error(`Request Failed: Status Code: ${statusCode}`);
+                // eslint-disable-next-line unicorn/consistent-destructuring
                 else if (!/^application\/json/.test(res.headers['content-type']))
+                    // eslint-disable-next-line unicorn/consistent-destructuring
                     error = new Error(`Invalid content-type: '${res.headers['content-type']}', expected 'application/json'`);
                 if (error) {
                     res.resume();

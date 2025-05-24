@@ -7,29 +7,29 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 function detectHighSpeedLowAltitude(aircraft) {
-    if (!aircraft.gs || !aircraft.calculated?.altitude) return null;
+    if (!aircraft.gs || !aircraft.calculated?.altitude) return undefined;
     if (aircraft.gs > 400 && aircraft.calculated.altitude < 15000)
         return {
             type: 'high-speed-low-altitude',
             severity: 'medium',
             details: `${aircraft.gs.toFixed(0)} kts at ${aircraft.calculated.altitude.toFixed(0)} ft`,
         };
-    return null;
+    return undefined;
 }
 
 function detectLowSpeedHighAltitude(aircraft) {
-    if (!aircraft.gs || !aircraft.calculated?.altitude) return null;
+    if (!aircraft.gs || !aircraft.calculated?.altitude) return undefined;
     if (aircraft.gs < 250 && aircraft.calculated.altitude > 30000)
         return {
             type: 'low-speed-high-altitude',
             severity: 'medium',
             details: `${aircraft.gs.toFixed(0)} kts at ${aircraft.calculated.altitude.toFixed(0)} ft`,
         };
-    return null;
+    return undefined;
 }
 
 function detectTemperatureAnomaly(aircraft) {
-    if (aircraft.oat === undefined || aircraft.tat === undefined || !aircraft.mach) return null;
+    if (aircraft.oat === undefined || aircraft.tat === undefined || !aircraft.mach) return undefined;
     const expectedTempDiff = aircraft.mach * aircraft.mach * 40,
         actualTempDiff = aircraft.tat - aircraft.oat;
     if (Math.abs(actualTempDiff - expectedTempDiff) > 20)
@@ -38,11 +38,11 @@ function detectTemperatureAnomaly(aircraft) {
             severity: 'low',
             details: `OAT ${aircraft.oat}°C, TAT ${aircraft.tat}°C, Mach ${aircraft.mach.toFixed(2)}`,
         };
-    return null;
+    return undefined;
 }
 
 function detectAltitudeOscillation(altitudes) {
-    if (!altitudes || altitudes.length < 5) return null;
+    if (!altitudes || altitudes.length < 5) return undefined;
     const altChangeDirections = [];
     for (let i = 1; i < altitudes.length; i++)
         if (Math.abs(altitudes[i] - altitudes[i - 1]) > 300) altChangeDirections.push(altitudes[i] - altitudes[i - 1] > 0 ? 'up' : 'down');
@@ -57,11 +57,11 @@ function detectAltitudeOscillation(altitudes) {
             severity: 'medium',
             details: `${directionChanges} direction changes, ${altVariation.toFixed(0)} ft range`,
         };
-    return null;
+    return undefined;
 }
 
 function detectAltitudeDeviation(aircraft, recentAltitudes) {
-    if (!aircraft.nav_altitude_mcp || !aircraft.calculated?.altitude || !recentAltitudes || recentAltitudes.length < 5) return null;
+    if (!aircraft.nav_altitude_mcp || !aircraft.calculated?.altitude || !recentAltitudes || recentAltitudes.length < 5) return undefined;
     const assignedAlt = aircraft.nav_altitude_mcp,
         currentAlt = aircraft.calculated.altitude;
     const wasAtAssigned = recentAltitudes.some((alt) => Math.abs(alt - assignedAlt) < 300),
@@ -72,11 +72,11 @@ function detectAltitudeDeviation(aircraft, recentAltitudes) {
             severity: 'medium',
             details: `${deviation.toFixed(0)} ft deviation from assigned ${assignedAlt} ft`,
         };
-    return null;
+    return undefined;
 }
 
 function detectExtremeVerticalRate(aircraft) {
-    if (!aircraft.baro_rate) return null;
+    if (!aircraft.baro_rate) return undefined;
     const absRate = Math.abs(aircraft.baro_rate);
     if (absRate > 6000)
         return {
@@ -84,11 +84,11 @@ function detectExtremeVerticalRate(aircraft) {
             severity: 'medium',
             details: `${aircraft.baro_rate > 0 ? '+' : '-'}${absRate.toFixed(0)} ft/min`,
         };
-    return null;
+    return undefined;
 }
 
 function detectRapidVerticalRateChange(aircraft, verticalRates) {
-    if (!aircraft.baro_rate || !verticalRates || verticalRates.length < 3) return null;
+    if (!aircraft.baro_rate || !verticalRates || verticalRates.length < 3) return undefined;
     const currentRate = verticalRates[verticalRates.length - 1],
         prevRate = verticalRates[verticalRates.length - 3],
         rateChange = Math.abs(currentRate - prevRate);
@@ -99,11 +99,11 @@ function detectRapidVerticalRateChange(aircraft, verticalRates) {
             severity: 'medium',
             details: `${rateChange.toFixed(0)} ft/min change${aircraft.nav_modes && aircraft.nav_modes.includes('tcas') ? ' (TCAS active)' : ''}`,
         };
-    return null;
+    return undefined;
 }
 
 function detectRapidSpeedChange(speeds) {
-    if (!speeds || speeds.length < 3) return null;
+    if (!speeds || speeds.length < 3) return undefined;
     const currentSpeed = speeds[speeds.length - 1],
         prevSpeed = speeds[0],
         speedChange = Math.abs(currentSpeed - prevSpeed);
@@ -113,7 +113,7 @@ function detectRapidSpeedChange(speeds) {
             severity: 'low',
             details: `${speedChange.toFixed(0)} knots in ${speeds.length} updates`,
         };
-    return null;
+    return undefined;
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -221,7 +221,7 @@ module.exports = {
         );
         const text =
             Object.entries(counts)
-                .map(([type, count]) => `${type}${count > 1 ? `:${count}` : ''}`)
+                .map(([type, count]) => `${type}${count > 1 ? ':' + count : ''}`)
                 .join(', ') + (count == 1 ? ` (${aircraft.calculated.anomaly.anomalies[0].details})` : ` (...)`);
         return {
             text: `anomalies: [${count}] ${text}${color}`,

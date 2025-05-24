@@ -3,14 +3,14 @@
 
 const mqtt = require('mqtt');
 let config = {};
-let client = null;
-let receiver = null;
+let client;
+let receiver;
 
 function mqttReceive(topic, message) {
     try {
         if (receiver) receiver(topic, message);
-    } catch (error) {
-        console.error(`mqtt: receiver on '${topic}', error (exception):`, error);
+    } catch (e) {
+        console.error(`mqtt: receiver on '${topic}', error (exception):`, e);
     }
 }
 
@@ -23,14 +23,14 @@ function mqttPublish(topic, message, options = {}) {
                 else if (config.debug) console.log(`mqtt: published to '${topic}'`);
             });
             return true;
-        } catch (error) {
-            console.error(`mqtt: publish error:`, error);
+        } catch (e) {
+            console.error(`mqtt: publish error:`, e);
         }
     return false;
 }
 
 function mqttSubscribe() {
-    if (client)
+    if (client) {
         if (Array.isArray(config.topics))
             config.topics.forEach((topic) =>
                 client.subscribe(topic, (err) => {
@@ -38,6 +38,7 @@ function mqttSubscribe() {
                     else console.log(`mqtt: subscribe to '${topic}', succeeded`);
                 })
             );
+    }
 }
 
 function mqttBegin(r) {
@@ -69,7 +70,7 @@ function mqttBegin(r) {
 function mqttEnd() {
     if (client) {
         client.end();
-        client = null;
+        client = undefined;
     }
 }
 

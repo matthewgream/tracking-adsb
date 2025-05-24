@@ -60,7 +60,7 @@ function calculateOverheadIntersect(lat, lon, alt, aircraft) {
 
 function calculateSlantRange(horizontalDistance, relativeAltitude) {
     const altitudeKm = relativeAltitude * 0.0003048; // feet to km
-    return Math.sqrt(horizontalDistance * horizontalDistance + altitudeKm * altitudeKm);
+    return Math.hypot(horizontalDistance * horizontalDistance + altitudeKm * altitudeKm);
 }
 
 function calculateVerticalAngle(horizontalDistance, relativeAltitude, observerLat) {
