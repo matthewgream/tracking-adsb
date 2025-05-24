@@ -7,6 +7,16 @@ module.exports = {
         source: '../airports/airports-data.js',
         apply: {
             EGLW: {
+                icao: "EGLW",
+                iata: "",
+                name: "London Heliport",
+                city: "London",
+                state: "England",
+                country: "GB",
+                elevation: 18,
+                lat: 51.4698078,
+                lon: -0.1797316,
+                tz: "Europe/London"
                 radius: 0.5,
                 height: 1500,
             },
