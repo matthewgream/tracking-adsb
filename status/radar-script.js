@@ -88,7 +88,7 @@ $(document).ready(async function () {
             `<div class="info-section">
             <h3>LOCATION</h3>
             <div>${homeLocation.address}</div>
-            <div><a href="https://www.google.co.uk/maps/place/${homeLocation.lat},${homeLocation.lon}" class="info-link" target="_blank">(${homeLocation.lat.toFixed(6)}, ${homeLocation.lon.toFixed(6)}, ${homeLocation.alt}M)</a></div>
+            <div><a href="https://www.google.co.uk/maps/place/${homeLocation.lat},${homeLocation.lon}" class="info-link" target="_blank">(${homeLocation.lat.toFixed(6)}, ${homeLocation.lon.toFixed(6)}, ${homeLocation.alt}ft)</a></div>
         </div>`;
         $('.info-container').html(html);
     }
@@ -122,7 +122,9 @@ $(document).ready(async function () {
         );
     }
     function airportATZradius(airport) {
-        return (airport.iata && airport.iata.trim() !== '' ? 2.5 : 2.0) * 1.852;
+        if (airport.radius) return airport.radius; // km
+        if (airport.runwayLengthMax) return (airport.runwayLengthMax < 1850 ? 2.0 : 2.5) * 1.852;
+        return (airport.iata?.trim() !== '' ? 2.5 : 2.0) * 1.852;
     }
     function isNearAirport(lat, lon, altitude) {
         return altitude < 2000 && Object.entries(findAirportsInRange(homeLocation.lat, homeLocation.lon, maxRadarRange)).some(([code, airport]) => calculateGeoDistance(lat, lon, airport.lat, airport.lon) <= airportATZradius(airport));
@@ -330,6 +332,8 @@ $(document).ready(async function () {
         });
     }
 
+
+    $('.radar-container').css ({ bottom: `${config.radar?.bottom === null ? -80 : config.radar.bottom}vh`, right: `${config.radar?.right === null ? -20 : config.radar.right}vw` });
     displayInfo();
     displayRadarHome();
     displayRadarLabels();
