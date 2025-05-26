@@ -1,3 +1,5 @@
 
-status -- updated status page (using lighttpd) for adsb based device (with flightaware, flightradar24, adsb-exchange, radarbox services) with real-time updates
+status -- updated real--time status page (using lighttpd/php) for adsb based device
+    - flightaware, flightradar24, adsb-exchange, radarbox services
 monitor -- monitor adsb feed and generate alerts to display & mqtt
+airports -- airports database and filtering scripts (for data used to monitor & status)
