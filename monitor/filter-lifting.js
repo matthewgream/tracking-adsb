@@ -19,7 +19,7 @@ module.exports = {
         aircraft.calculated.lifting = { isLiftingOff: false };
         if (!this.conf.altitude || aircraft.calculated?.altitude < this.conf.altitude) {
             const { lat, lon } = this.extra.data.location;
-            const lifting = helpers.calculateLifingTrajectory(lat, lon, aircraft);
+            const lifting = helpers.calculateLiftingTrajectory(lat, lon, aircraft);
             if (lifting?.isLiftingOff) {
                 lifting.nearbyAirports = this.extra.data.airports.findNearby(aircraft.lat, aircraft.lon, {
                     distance: this.conf.radius,
