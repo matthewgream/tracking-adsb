@@ -8,7 +8,31 @@ const helpers = require('./filter-helpers.js');
 
 function calculateLifingTrajectory(lat, lon, aircraft) {
     if (!aircraft.lat || !aircraft.lon || !aircraft.track || !aircraft.gs || !aircraft.calculated.altitude || !aircraft.baro_rate) return undefined;
-    if (aircraft.baro_rate < 300) return undefined; // Significant climb rate
+    const getMinClimbRate = (aircraft) => {
+        switch (aircraft.category) {
+            case 'A0': // No information
+            case 'A1': // Light aircraft (<15.5k lbs)
+                return 200; // Light aircraft can take off with lower climb rates
+            case 'A2': // Small (15.5-75k lbs)
+                return 250;
+            case 'A3': // Large (75-300k lbs)
+            case 'A4': // High-Vortex Large (B757)
+            case 'A5': // Heavy (>300k lbs)
+                return 300; // Heavy aircraft need higher climb rates to be significant
+            case 'A7': // Rotorcraft
+                return 100; // Helicopters can have very low climb rates
+            case 'B1': // Glider
+                return 150; // Gliders have low climb rates
+            case 'B4': // Ultralight
+                return 150; // Ultralights climb slowly
+            case 'B6': // UAV/Drone
+                return 100; // Small drones
+            default:
+                return 250; // Conservative default
+        }
+    };
+    const minClimbRate = getMinClimbRate(aircraft);
+    if (aircraft.baro_rate < minClimbRate) return undefined;
     const climbIndicator = aircraft.calculated.altitude < 3000 ? 2 : 1; // Weight lower altitudes more heavily
     const liftingScore = ((climbIndicator * aircraft.baro_rate) / 100) * (1 - Math.min(1, aircraft.calculated.altitude / 10000));
     if (liftingScore < 3) return undefined; // Adjust threshold as needed

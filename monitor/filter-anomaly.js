@@ -154,8 +154,13 @@ module.exports = {
         if (aircraft.lat !== undefined && aircraft.lon !== undefined) history.positions.push({ lat: aircraft.lat, lon: aircraft.lon, timestamp: now });
         const tenMinutesAgo = now - 10 * 60 * 1000;
         const oldestIndex = history.timestamps.findIndex((ts) => ts >= tenMinutesAgo);
-        history.altitudes = history.altitudes.slice(oldestIndex === -1 ? 0 : oldestIndex);
-        history.timestamps = history.timestamps.slice(oldestIndex === -1 ? 0 : oldestIndex);
+        if (oldestIndex === -1) {
+            history.altitudes = [];
+            history.timestamps = [];
+        } else {
+            history.altitudes = history.altitudes.slice(oldestIndex);
+            history.timestamps = history.timestamps.slice(oldestIndex);
+        }
         history.verticalRates = history.verticalRates.slice(-20); // Keep last 20 readings
         history.speeds = history.speeds.slice(-20); // Keep last 20 readings
         history.positions = history.positions.filter((pos) => pos.timestamp >= tenMinutesAgo);

@@ -8,7 +8,8 @@ const helpers = require('./filter-helpers.js');
 
 function calculateOverheadIntersect(lat, lon, alt, aircraft) {
     if (!aircraft.lat || !aircraft.lon || !aircraft.track || !aircraft.gs || !aircraft.calculated.altitude) return undefined;
-
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180 || Math.abs(aircraft.lat) > 90 || Math.abs(aircraft.lon) > 180) return undefined;
+    if (aircraft.gs <= 0 || aircraft.gs > 2000) return undefined;
     const earthRadius = 6371;
     const stationLatRad = helpers.deg2rad(lat),
         stationLonRad = helpers.deg2rad(lon);
@@ -16,16 +17,19 @@ function calculateOverheadIntersect(lat, lon, alt, aircraft) {
         aircraftLonRad = helpers.deg2rad(aircraft.lon);
     const trackRad = helpers.track2rad(aircraft.track);
     const speed = (aircraft.gs * 1.852) / 60; // Convert knots to km/min
-    const initialDistance =
-        earthRadius *
-        Math.acos(
-            Math.sin(aircraftLatRad) * Math.sin(stationLatRad) + Math.cos(aircraftLatRad) * Math.cos(stationLatRad) * Math.cos(aircraftLonRad - stationLonRad)
-        );
+    const cosValue =
+        Math.sin(aircraftLatRad) * Math.sin(stationLatRad) + Math.cos(aircraftLatRad) * Math.cos(stationLatRad) * Math.cos(aircraftLonRad - stationLonRad);
+    const clampedCosValue = Math.max(-1, Math.min(1, cosValue)); // Clamp to [-1, 1]
+    const initialDistance = earthRadius * Math.acos(clampedCosValue);
     const y = Math.sin(stationLonRad - aircraftLonRad) * Math.cos(stationLatRad),
         x = Math.cos(aircraftLatRad) * Math.sin(stationLatRad) - Math.sin(aircraftLatRad) * Math.cos(stationLatRad) * Math.cos(stationLonRad - aircraftLonRad);
     const angleDiff = trackRad - Math.atan2(y, x);
-    const crossTrackDistance = Math.asin(Math.sin(initialDistance / earthRadius) * Math.sin(angleDiff)) * earthRadius,
-        alongTrackDistance = Math.acos(Math.cos(initialDistance / earthRadius) / Math.cos(crossTrackDistance / earthRadius)) * earthRadius;
+    const sinValue = Math.sin(initialDistance / earthRadius) * Math.sin(angleDiff);
+    const clampedSinValue = Math.max(-1, Math.min(1, sinValue)); // Clamp to [-1, 1]
+    const crossTrackDistance = Math.asin(clampedSinValue) * earthRadius;
+    const cosValue2 = Math.cos(initialDistance / earthRadius) / Math.cos(crossTrackDistance / earthRadius);
+    const clampedCosValue2 = Math.max(-1, Math.min(1, cosValue2)); // Clamp to [-1, 1]
+    const alongTrackDistance = Math.acos(clampedCosValue2) * earthRadius;
     //
     const overheadFuture = Math.cos(angleDiff) >= 0;
     const overheadDistance = Math.abs(crossTrackDistance);
@@ -65,13 +69,15 @@ function calculateSlantRange(horizontalDistance, relativeAltitude) {
 
 function calculateVerticalAngle(horizontalDistance, relativeAltitude, observerLat) {
     const altitudeKm = relativeAltitude * 0.0003048; // feet to km
+    if (horizontalDistance < 0.001) return relativeAltitude > 0 ? 90 : -90; // Directly overhead or below
     let angle = Math.atan2(altitudeKm, horizontalDistance) * (180 / Math.PI);
     if (horizontalDistance > 10) {
         // Only apply for distances > 10km
-        const curveCorrection = (horizontalDistance * horizontalDistance) / (12800 * Math.cos(helpers.deg2rad(observerLat)));
+        const latRad = Math.abs((observerLat * Math.PI) / 180);
+        const curveCorrection = (horizontalDistance * horizontalDistance) / (12800 * Math.cos(latRad));
         angle += Math.atan2(curveCorrection, horizontalDistance) * (180 / Math.PI);
     }
-    return angle;
+    return Math.max(-90, Math.min(90, angle));
 }
 
 function formatVerticalAngle(angle) {
@@ -82,6 +88,22 @@ function formatVerticalAngle(angle) {
     if (angle < 60) return 'high in sky';
     if (angle < 80) return 'nearly overhead';
     return 'directly overhead';
+}
+
+function formatTimePhrase(seconds, isFuture) {
+    const totalSecs = Math.abs(seconds);
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    if (isFuture) {
+        if (totalSecs < 30) return `in ${totalSecs} seconds`;
+        if (totalSecs < 90) return secs > 45 ? `in just over a minute` : `in about a minute`;
+        if (mins < 5) return secs > 30 ? `in about ${mins + 1} minutes` : `in about ${mins} minutes`;
+        return `in about ${mins} minutes`;
+    } else {
+        if (totalSecs < 30) return `just now`;
+        if (totalSecs < 90) return `about a minute ago`;
+        return `about ${mins} minutes ago`;
+    }
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -117,20 +139,7 @@ module.exports = {
             aircrafts.filter((a) => a.calculated.overhead.willIntersectOverhead)
         ),
     format: (aircraft) => {
-        let timePhrase;
-        if (aircraft.calculated.overhead.overheadFuture) {
-            const mins = Math.floor(aircraft.calculated.overhead.overheadSeconds / 60),
-                secs = aircraft.calculated.overhead.overheadSeconds % 60;
-            if (mins === 0) timePhrase = `in ${secs} seconds`;
-            else if (mins === 1) timePhrase = secs > 30 ? `in just over a minute` : `in about a minute`;
-            else if (mins < 5) timePhrase = secs > 30 ? `in about ${mins + 1} minutes` : `in about ${mins} minutes`;
-            else timePhrase = `in about ${mins} minutes`;
-        } else {
-            const mins = Math.floor(Math.abs(aircraft.calculated.overhead.overheadSeconds) / 60);
-            if (mins === 0) timePhrase = `just now`;
-            else if (mins === 1) timePhrase = `about a minute ago`;
-            else timePhrase = `about ${mins} minutes ago`;
-        }
+        const timePhrase = formatTimePhrase(aircraft.calculated.overhead.overheadSeconds, aircraft.calculated.overhead.overheadFuture);
         const {
             verticalRate,
             overheadAltitude,

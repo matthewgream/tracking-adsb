@@ -9,7 +9,31 @@ const helpers = require('./filter-helpers.js');
 function calculateGroundIntersect(lat, lon, rad, aircraft) {
     if (!aircraft.lat || !aircraft.lon || !aircraft.track || !aircraft.gs || !aircraft.calculated.altitude || !aircraft.baro_rate) return undefined;
     if (aircraft.calculated.altitude === 0 || aircraft.calculated.altitude === 'ground') return undefined;
-    if (aircraft.baro_rate > -300) return undefined; // shallow descent
+    const getMinDescentRate = (aircraft) => {
+        switch (aircraft.category) {
+            case 'A0': // No information
+            case 'A1': // Light aircraft (<15.5k lbs)
+                return -200; // Lighter aircraft can land with shallower descent
+            case 'A2': // Small (15.5-75k lbs)
+                return -250;
+            case 'A3': // Large (75-300k lbs)
+            case 'A4': // High-Vortex Large (B757)
+            case 'A5': // Heavy (>300k lbs)
+                return -300;
+            case 'A7': // Rotorcraft
+                return -100; // Helicopters can have very shallow descents
+            case 'B1': // Glider
+                return -150; // Gliders have shallow descent rates
+            case 'B4': // Ultralight
+                return -150;
+            case 'B6': // UAV/Drone
+                return -100;
+            default:
+                return -250; // Conservative default
+        }
+    };
+    const minDescentRate = getMinDescentRate(aircraft);
+    if (aircraft.baro_rate > minDescentRate) return undefined;
     const descentRate = Math.abs(aircraft.baro_rate);
     const timeToGround = aircraft.calculated.altitude / descentRate,
         groundSeconds = Math.round(timeToGround * 60);

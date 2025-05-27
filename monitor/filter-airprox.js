@@ -51,10 +51,14 @@ function detectAirprox(aircraft, aircraftList, horizontalThreshold, verticalThre
             vy2 = otherAircraft.gs * Math.sin(track2Rad);
         const relVx = vx2 - vx1,
             relVy = vy2 - vy1;
-        closureRate = Math.hypot(relVx * relVx + relVy * relVy);
+        closureRate = Math.hypot(relVx, relVy);
         const bearingRad = helpers.deg2rad(helpers.calculateBearing(aircraft.lat, aircraft.lon, otherAircraft.lat, otherAircraft.lon));
-        const closingVelocity = relVx * Math.cos(bearingRad) + relVy * Math.sin(bearingRad);
-        if (Math.abs(closingVelocity) > 0.1) closureTime = (horizontalDistance * 1000) / (closingVelocity * 0.514444); // 0.514444 m/s per knot
+        const closureVelocity = relVx * Math.cos(bearingRad) + relVy * Math.sin(bearingRad);
+        if (Math.abs(closureVelocity) > 0.1) {
+            const timeSeconds = (horizontalDistance * 1000) / Math.abs(closureVelocity * 0.514444);
+            closureTime = closureVelocity < 0 ? timeSeconds : -timeSeconds;
+            if (Math.abs(closureTime) > 600) closureTime = undefined;
+        }
     }
 
     let riskCategory;
@@ -127,20 +131,21 @@ module.exports = {
     },
     format: (aircraft) => {
         let proximityDescription = `proximity alert`;
-        if (aircraft.calculated.airprox.timeToClosestApproach !== null) {
-            const timeToCA = Math.round(aircraft.calculated.airprox.timeToClosestApproach);
+        const { closureTime, closureRate, riskCategory, verticalSeparation, horizontalDistance, otherAircraft } = aircraft.calculated.airprox;
+        if (closureTime !== undefined) {
+            const timeToCA = Math.round(closureTime);
             proximityDescription = timeToCA > 0 ? `convergence in ~${timeToCA} seconds` : `diverging`;
         }
         return {
-            text: `airprox ${aircraft.calculated.airprox.riskCategory} with ${aircraft.calculated.airprox.otherAircraft.flight} - ${aircraft.calculated.airprox.horizontalDistance.toFixed(1)}km/${aircraft.calculated.airprox.verticalSeparation}ft separation - ${proximityDescription}`,
-            warn: aircraft.calculated.airprox.riskCategory === 'A' || aircraft.calculated.airprox.riskCategory === 'B',
+            text: `airprox ${riskCategory} with ${otherAircraft.flight} - ${horizontalDistance.toFixed(1)}km/${verticalSeparation}ft separation - ${proximityDescription}`,
+            warn: riskCategory === 'A' || riskCategory === 'B',
             airproxInfo: {
-                otherFlight: aircraft.calculated.airprox.otherAircraft.flight,
-                horizontalDistance: aircraft.calculated.airprox.horizontalDistance,
-                verticalSeparation: aircraft.calculated.airprox.verticalSeparation,
-                riskCategory: aircraft.calculated.airprox.riskCategory,
-                closureRate: aircraft.calculated.airprox.closureRate,
-                timeToClosestApproach: aircraft.calculated.airprox.timeToClosestApproach,
+                otherFlight: otherAircraft.flight,
+                horizontalDistance,
+                verticalSeparation,
+                riskCategory,
+                closureRate,
+                closureTime,
             },
         };
     },

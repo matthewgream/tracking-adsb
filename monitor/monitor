@@ -92,9 +92,9 @@ function filterAircraft(lat, lon, aircraftList) {
             aircraft.calculated.distance = helpers.calculateDistance(lat, lon, aircraft.lat, aircraft.lon);
             if (aircraft.track) aircraft.calculated.positionRelative = helpers.calculateRelativePosition(lat, lon, aircraft.lat, aircraft.lon, aircraft.track);
         }
-        aircraft.calculated.altitude = aircraft.alt_baro || aircraft.alt_geom;
+        aircraft.calculated.altitude = aircraft.alt_baro ?? aircraft.alt_geom;
         if (aircraft.calculated.altitude === 'ground') aircraft.calculated.altitude = 0;
-        if (typeof aircraft.calculated.altitude !== 'number') delete aircraft.calculated.altitude;
+        if (aircraft.calculated.altitude === null || typeof aircraft.calculated.altitude !== 'number') delete aircraft.calculated.altitude;
     }
     const filtered = [];
     const filters = filterModules.filter((f) => f.enabled);

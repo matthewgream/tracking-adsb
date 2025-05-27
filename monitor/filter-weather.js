@@ -59,15 +59,17 @@ function detectTurbulence(verticalRates) {
 
 function detectStrongWinds(aircraft) {
     if (!aircraft.gs || !aircraft.tas || !aircraft.calculated?.altitude) return undefined;
-    if (aircraft.calculated.altitude > 20000) {
-        const difference = Math.abs(aircraft.gs - aircraft.tas);
-        if (difference > 100)
-            return {
-                type: 'strong-winds',
-                severity: 'low',
-                details: `${difference.toFixed(0)} kts GS/TAS difference`,
-            };
-    }
+    const difference = Math.abs(aircraft.gs - aircraft.tas);
+    let threshold = 100; // Default for high altitude
+    if (aircraft.calculated.altitude < 10000)
+        threshold = 50; // Lower threshold for low altitude
+    else if (aircraft.calculated.altitude < 20000) threshold = 75; // Medium threshold for medium altitude
+    if (difference > threshold)
+        return {
+            type: 'strong-winds',
+            severity: aircraft.calculated.altitude < 10000 ? 'medium' : 'low',
+            details: `${difference.toFixed(0)} kts GS/TAS difference`,
+        };
     return undefined;
 }
 
@@ -77,7 +79,7 @@ function detectTemperatureInversion(aircraft) {
     const expectedTemp = 15 - (aircraft.calculated.altitude / 1000) * 2,
         tempDeviation = aircraft.oat - expectedTemp;
     // Significant temperature inversion or deviation
-    if (Math.abs(tempDeviation) > 15)
+    if (Math.abs(tempDeviation) > 10)
         return {
             type: 'temperature-anomaly',
             severity: 'low',
@@ -124,13 +126,13 @@ module.exports = {
         const history = this.weatherHistory[aircraft.hex];
         const now = Date.now();
 
-        if (aircraft.baro_rate) {
+        if (aircraft.baro_rate !== undefined) {
             history.verticalRates.push(aircraft.baro_rate);
             history.timestamps.push(now);
         }
 
         const fiveMinutesAgo = now - 5 * 60 * 1000;
-        const oldestValidIndex = history.timestamps.findIndex((ts) => ts >= now - fiveMinutesAgo);
+        const oldestValidIndex = history.timestamps.findIndex((ts) => ts >= fiveMinutesAgo);
         if (oldestValidIndex > 0) {
             history.verticalRates = history.verticalRates.slice(oldestValidIndex);
             history.timestamps = history.timestamps.slice(oldestValidIndex);
