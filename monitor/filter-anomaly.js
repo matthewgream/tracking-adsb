@@ -194,7 +194,11 @@ module.exports = {
             .forEach((hex) => delete this.trackHistory[hex]);
     },
     evaluate: (aircraft) => aircraft.calculated.anomaly.hasAnomaly,
-    sort: (a, b) => severityRank[b.calculated.anomaly.highestSeverity] - severityRank[a.calculated.anomaly.highestSeverity],
+    sort: (a, b) => {
+        a = a.calculated.anomaly;
+        b = b.calculated.anomaly;
+        return severityRank[b.highestSeverity] - severityRank[a.highestSeverity];
+    },
     getStats: (aircrafts) => {
         const list = aircrafts.filter((a) => a.calculated.anomaly.hasAnomaly);
         const byType = list

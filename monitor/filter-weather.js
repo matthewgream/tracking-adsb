@@ -169,7 +169,11 @@ module.exports = {
             .forEach((hex) => delete this.weatherHistory[hex]);
     },
     evaluate: (aircraft) => aircraft.calculated.weather.inWeatherOperation,
-    sort: (a, b) => severityRank[b.calculated.weather.highestSeverity] - severityRank[a.calculated.weather.highestSeverity],
+    sort: (a, b) => {
+        a = a.calculated.weather;
+        b = b.calculated.weather;
+        return severityRank[b.highestSeverity] - severityRank[a.highestSeverity];
+    },
     getStats: (aircrafts) => {
         const list = aircrafts.filter((a) => a.calculated.weather.inWeatherOperation);
         const byCondition = list

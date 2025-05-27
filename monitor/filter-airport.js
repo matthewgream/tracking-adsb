@@ -17,15 +17,17 @@ module.exports = {
     },
     preprocess: (aircraft) => {
         aircraft.calculated.airports_nearby = [];
-        if (aircraft.lat && aircraft.lon)
-            aircraft.calculated.airports_nearby = this.extra.data.airports.findNearby(aircraft.lat, aircraft.lon, { altitude: aircraft.calculated.altitude });
+        if (aircraft.lat !== undefined && aircraft.lon !== undefined)
+            aircraft.calculated.airports_nearby = this.extra.data.airports.findNearby(aircraft.lat, aircraft.lon, { altitude: aircraft.calculated?.altitude });
     },
     evaluate: (aircraft) => aircraft.calculated.airports_nearby.length > 0,
     sort: (a, b) => {
-        if (a.calculated.airports_nearby.length === 0 && b.calculated.airports_nearby.length === 0) return 0;
-        if (a.calculated.airports_nearby.length === 0) return 1;
-        if (b.calculated.airports_nearby.length === 0) return -1;
-        return a.calculated.airports_nearby[0].distance - b.calculated.airports_nearby[0].distance;
+        a = a.calculated.airports_nearby;
+        b = b.calculated.airports_nearby;
+        if (a.length === 0 && b.length === 0) return 0;
+        if (a.length === 0) return 1;
+        if (b.length === 0) return -1;
+        return a[0].distance - b[0].distance;
     },
     getStats: (aircrafts) => {
         const list = aircrafts.filter((a) => a.calculated.airports_nearby.length > 0);

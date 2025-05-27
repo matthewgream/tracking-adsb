@@ -17,13 +17,7 @@ module.exports = {
     },
     preprocess: (aircraft) => {
         aircraft.calculated.is_proximate = false;
-        if (
-            aircraft.calculated.distance &&
-            aircraft.calculated.altitude &&
-            aircraft.calculated.distance <= this.conf.distance &&
-            aircraft.calculated.altitude <= this.conf.altitude
-        )
-            aircraft.calculated.is_proximate = true;
+        if (aircraft.calculated?.distance <= this.conf.distance && aircraft.calculated?.altitude <= this.conf.altitude) aircraft.calculated.is_proximate = true;
     },
     evaluate: (aircraft) => aircraft.calculated.is_proximate,
     sort: (a, b) => a.calculated.distance - b.calculated.distance,

@@ -38,15 +38,7 @@ module.exports = {
             { field: 'category', pattern: '[CD][0-9]', category: 'special-interest', description: 'Special aircraft' },
         ];
         this.flightsCompiled = this.flights.map((p) => ({ ...p, regex: new RegExp(p.pattern, 'i') }));
-    },
-    preprocess: (aircraft) => {
-        aircraft.calculated.specific = {
-            matches: this.flightsCompiled.filter((p) => aircraft?.[p.field] && p.regex.test(aircraft[p.field])).map(({ regex, ...rest }) => rest), // eslint-disable-line no-unused-vars
-        };
-    },
-    evaluate: (aircraft) => aircraft.calculated.specific.matches.length > 0,
-    sort: (a, b) => {
-        const categoryPriorities = this.conf.priorities || {
+        this.categoryPriorities = this.conf.priorities || {
             government: 1,
             'emergency-services': 2,
             'military-transport': 3,
@@ -57,8 +49,16 @@ module.exports = {
             'special-interest': 8,
             royalty: 9,
         };
-        const catA = categoryPriorities[a.calculated.specific.matches?.[0].category] || 999,
-            catB = categoryPriorities[b.calculated.specific.matches?.[0].category] || 999;
+    },
+    preprocess: (aircraft) => {
+        aircraft.calculated.specific = {
+            matches: this.flightsCompiled.filter((p) => aircraft?.[p.field] && p.regex.test(aircraft[p.field])).map(({ regex, ...rest }) => rest), // eslint-disable-line no-unused-vars
+        };
+    },
+    evaluate: (aircraft) => aircraft.calculated.specific.matches.length > 0,
+    sort: (a, b) => {
+        const catA = this.categoryPriorities[a.calculated.specific.matches?.[0].category] || 999,
+            catB = this.categoryPriorities[b.calculated.specific.matches?.[0].category] || 999;
         return catA === catB ? a.calculated.distance - b.calculated.distance : catA - catB;
     },
     getStats: (aircrafts) => {
