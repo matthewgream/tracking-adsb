@@ -130,9 +130,9 @@ while IFS= read -r line; do
 
         # For overhead messages
         elif [[ "$type" == "overhead" ]]; then
-            future=$(echo "$payload" | jq -r '.overheadFuture' 2>/dev/null)
-            seconds=$(echo "$payload" | jq -r '.overheadSeconds // 0 | round' 2>/dev/null)
-            alt=$(echo "$payload" | jq -r '.overheadAltitude // "-" | if type == "number" then round else . end' 2>/dev/null)
+            future=$(echo "$payload" | jq -r '.overheadInfo.overheadFuture // false' 2>/dev/null)
+            seconds=$(echo "$payload" | jq -r '.overheadInfo.overheadSeconds // 0 | round' 2>/dev/null)
+            alt=$(echo "$payload" | jq -r '.overheadInfo.overheadAltitude // "-" | if type == "number" then round else . end' 2>/dev/null)
             if [[ "$future" == "true" ]]; then
                 details="Overhead in: ${seconds}s at ${alt}ft"
             else
