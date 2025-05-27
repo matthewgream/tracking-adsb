@@ -1,3 +1,5 @@
+/* global config, airportsData */
+
 $(document).ready(async function () {
     const homeLocation = config.location;
     const maxRadarRange = 75;
@@ -96,7 +98,6 @@ $(document).ready(async function () {
     function cleanFlightHistory() {
         const now = Date.now();
         const oneHourAgo = now - 60 * 60 * 1000;
-        let cleaned = false;
         Object.keys(flightHistory)
             .filter((hexCode) => flightHistory[hexCode].length > 0 && flightHistory[hexCode][0].timestamp < oneHourAgo)
             .forEach((hexCode) => delete flightHistory[hexCode]);
@@ -182,8 +183,8 @@ $(document).ready(async function () {
     }
     function displayRadarAirports() {
         Object.entries(findAirportsInRange(homeLocation.lat, homeLocation.lon, maxRadarRange)).forEach(([code, airport]) => {
-            const distance = airport.distance,
-                bearing = calculateGeoAngle(homeLocation.lat, homeLocation.lon, airport.lat, airport.lon);
+            const { distance } = airport,
+                bearing = calculateGeoAngle(homeLocation.lat, homeLocation.lon, airport.lat, airport.lon); // eslint-disable-line unicorn/consistent-destructuring
             const radarX = 50 + (distance / maxRadarRange) * 45 * Math.sin((bearing * Math.PI) / 180),
                 radarY = 50 - (distance / maxRadarRange) * 45 * Math.cos((bearing * Math.PI) / 180);
             const marker = $('<div class="airport-marker"></div>');
@@ -225,7 +226,7 @@ $(document).ready(async function () {
         };
     }
     function calculatePointDistance(x1, y1, x2, y2) {
-        return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+        return Math.hypot((x2 - x1) ** 2 + (y2 - y1) ** 2);
     }
     function calculatePointAngle(x1, y1, x2, y2) {
         return (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
@@ -272,7 +273,7 @@ $(document).ready(async function () {
                         bearing = calculateGeoAngle(homeLocation.lat, homeLocation.lon, lat, lon);
                     const altitude = flight[4] ? Number.parseInt(flight[4]) : 0;
                     const callsign = flight[16] || hexCode,
-                        squawk = flight[6];
+                        squawk = flight[6] || '';
                     if (altitude <= 2500) altitudeCounts.low++;
                     else if (altitude <= 8000) altitudeCounts.medium++;
                     else if (altitude <= 22000) altitudeCounts.high++;
@@ -340,7 +341,7 @@ $(document).ready(async function () {
                         top: y1 + '%',
                         width: lineLength + '%',
                         transform: `rotate(${lineAngle}deg)`,
-                        opacity: opacity,
+                        opacity,
                         'z-index': 85 - i,
                     }).addClass(colourClass);
                     $('.radar-container').append(line);

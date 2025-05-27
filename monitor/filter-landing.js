@@ -60,13 +60,13 @@ module.exports = {
             }
         }
     },
-    evaluate: (aircraft) => {
-        return aircraft.calculated.landing.willIntersectGround;
-    },
+    evaluate: (aircraft) => aircraft.calculated.landing.willIntersectGround,
     sort: (a, b) => {
-        const aIsUnexpected = !a.calculated.landing.isPossibleLanding,
-            bIsUnexpected = !b.calculated.landing.isPossibleLanding;
-        return aIsUnexpected === bIsUnexpected ? a.calculated.landing.groundSeconds - b.calculated.landing.groundSeconds : aIsUnexpected ? -1 : 1;
+        const aIsUnexpected = !a.calculated.landing.isPossibleLanding;
+        const bIsUnexpected = !b.calculated.landing.isPossibleLanding;
+        if (aIsUnexpected && !bIsUnexpected) return -1;
+        if (!aIsUnexpected && bIsUnexpected) return 1;
+        return a.calculated.landing.groundSeconds - b.calculated.landing.groundSeconds;
     },
     getStats: (aircrafts) => {
         const list = aircrafts.filter((a) => a.calculated.landing.willIntersectGround);
@@ -85,10 +85,16 @@ module.exports = {
                     groundPosition: aircraft.calculated.landing.groundPosition,
                 },
             };
-        const airport = aircraft.calculated.landing.airports[0];
-        const name = airport?.name ? (airport?.icao ? `${airport?.icao} [${airport?.name}]` : airport?.name) : airport?.icao || '';
+        const [airport] = aircraft.calculated.landing.airports;
+        const { name, icao } = airport || {};
+        const displayName = (() => {
+            if (name && icao) return `${icao} [${name}]`;
+            if (name) return name;
+            if (icao) return icao;
+            return '';
+        })();
         return {
-            text: `approaching ${name || 'airport'}`,
+            text: `approaching ${displayName || 'airport'}`,
             landingInfo: {
                 groundPosition: aircraft.calculated.landing.groundPosition,
             },

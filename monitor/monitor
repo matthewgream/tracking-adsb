@@ -160,7 +160,7 @@ function track(data) {
         data.aircraft
             .filter((aircraft) => aircraft.hex)
             .forEach((aircraft) => {
-                const hex = aircraft.hex;
+                const { hex } = aircraft;
                 currentHexes.add(hex);
                 cache[hex] = {
                     ...aircraft,

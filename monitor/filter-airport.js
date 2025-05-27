@@ -20,14 +20,12 @@ module.exports = {
         if (aircraft.lat && aircraft.lon)
             aircraft.calculated.airports_nearby = this.extra.data.airports.findNearby(aircraft.lat, aircraft.lon, { altitude: aircraft.calculated.altitude });
     },
-    evaluate: (aircraft) => {
-        return aircraft.calculated.airports_nearby.length > 0;
-    },
+    evaluate: (aircraft) => aircraft.calculated.airports_nearby.length > 0,
     sort: (a, b) => {
         if (a.calculated.airports_nearby.length === 0 && b.calculated.airports_nearby.length === 0) return 0;
         else if (a.calculated.airports_nearby.length === 0) return 1;
         else if (b.calculated.airports_nearby.length === 0) return -1;
-        else a.calculated.airports_nearby[0].distance - b.calculated.airports_nearby[0].distance;
+        return a.calculated.airports_nearby[0].distance - b.calculated.airports_nearby[0].distance;
     },
     getStats: (aircrafts) => {
         const list = aircrafts.filter((a) => a.calculated.airports_nearby.length > 0);
@@ -45,7 +43,7 @@ module.exports = {
         };
     },
     format: (aircraft) => {
-        const airport = aircraft.calculated.airports_nearby[0];
+        const [airport] = aircraft.calculated.airports_nearby;
         const name = airport.name ? (airport.icao ? `${airport.icao} [${airport.name}]` : airport.name) : airport.icao || ''; // eslint-disable-line sonarjs/no-nested-conditional
         return {
             text: `near ${name}`,

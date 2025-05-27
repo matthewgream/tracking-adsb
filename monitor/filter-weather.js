@@ -41,11 +41,16 @@ function detectTurbulence(verticalRates) {
 
     if (variation > 1200) {
         const avg = verticalRates.reduce((sum, rate) => sum + rate, 0) / verticalRates.length;
-        const variance = verticalRates.reduce((sum, rate) => sum + Math.pow(rate - avg, 2), 0) / verticalRates.length;
+        const variance = verticalRates.reduce((sum, rate) => sum + (rate - avg) ** 2, 0) / verticalRates.length;
         const stdDev = Math.sqrt(variance);
+        const getSeverity = (stdDev) => {
+            if (stdDev > 1000) return 'high';
+            if (stdDev > 600) return 'medium';
+            return 'low';
+        };
         return {
             type: 'turbulence',
-            severity: stdDev > 600 ? 'medium' : stdDev > 1000 ? 'high' : 'low',
+            severity: getSeverity(stdDev),
             details: `vertical rate ${stdDev.toFixed(0)} ft/min`,
         };
     }
@@ -160,9 +165,7 @@ module.exports = {
             .filter((hex) => this.weatherHistory[hex].lastUpdate < thirtyMinutesAgo)
             .forEach((hex) => delete this.weatherHistory[hex]);
     },
-    evaluate: (aircraft) => {
-        return aircraft.calculated.weather.inWeatherOperation;
-    },
+    evaluate: (aircraft) => aircraft.calculated.weather.inWeatherOperation,
     sort: (a, b) => severityRank[b.calculated.weather.highestSeverity] - severityRank[a.calculated.weather.highestSeverity],
     getStats: (aircrafts) => {
         const list = aircrafts.filter((a) => a.calculated.weather.inWeatherOperation);

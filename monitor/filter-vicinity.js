@@ -25,9 +25,7 @@ module.exports = {
         )
             aircraft.calculated.is_proximate = true;
     },
-    evaluate: (aircraft) => {
-        return aircraft.calculated.is_proximate;
-    },
+    evaluate: (aircraft) => aircraft.calculated.is_proximate,
     sort: (a, b) => a.calculated.distance - b.calculated.distance,
     getStats: (aircrafts) =>
         this.extra.format.getStats_List(

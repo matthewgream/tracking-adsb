@@ -58,17 +58,13 @@ module.exports = {
                     distance: this.conf.radius,
                 });
                 lifting.hasKnownOrigin = lifting.nearbyAirports.length > 0;
-                if (lifting.hasKnownOrigin) lifting.departureAirport = lifting.nearbyAirports[0];
+                if (lifting.hasKnownOrigin) [lifting.departureAirport] = lifting.nearbyAirports;
                 aircraft.calculated.lifting = lifting;
             }
         }
     },
-    evaluate: (aircraft) => {
-        return aircraft.calculated.lifting.isLiftingOff;
-    },
-    sort: (a, b) => {
-        return b.calculated.lifting.liftingScore - a.calculated.lifting.liftingScore;
-    },
+    evaluate: (aircraft) => aircraft.calculated.lifting.isLiftingOff,
+    sort: (a, b) => b.calculated.lifting.liftingScore - a.calculated.lifting.liftingScore,
     getStats: (aircrafts) => {
         const list = aircrafts.filter((a) => a.calculated.lifting.isLiftingOff);
         const byAirport = list
@@ -84,9 +80,15 @@ module.exports = {
     },
     format: (aircraft) => {
         const airport = aircraft.calculated.lifting.hasKnownOrigin ? aircraft.calculated.lifting.departureAirport : undefined;
-        const name = airport?.name ? (airport?.icao ? `${airport?.icao} [${airport?.name}]` : airport?.name) : airport?.icao || '';
+        const { name, icao } = airport || {};
+        const displayName = (() => {
+            if (name && icao) return `${icao} [${name}]`;
+            if (name) return name;
+            if (icao) return icao;
+            return '';
+        })();
         return {
-            text: `climbing${name ? ' from ' + name : ''} at ${aircraft.calculated.lifting.climbRate} ft/min`,
+            text: `climbing${displayName ? ' from ' + displayName : ''} at ${aircraft.calculated.lifting.climbRate} ft/min`,
             liftingInfo: {
                 departureAirport: aircraft.calculated.lifting.departureAirport,
                 departureTime: aircraft.calculated.lifting.departureTime,

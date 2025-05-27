@@ -69,10 +69,18 @@ while IFS= read -r line; do
         continue
     fi
 
-    # Position data
-    distance=$(echo "$payload" | jq -r '.position.distance // 0 | round | tostring + "km"' 2>/dev/null)
+    # Position
+    distance=$(echo "$payload" | jq -r 'if .position.distance then (.position.distance | round | tostring + "km") else "-" end' 2>/dev/null)
     bearing=$(echo "$payload" | jq -r '.position.cardinalBearing // "-"' 2>/dev/null)
-    position="${distance} ${bearing}"
+    if [[ "$distance" == "-" && "$bearing" == "-" ]]; then
+        position="-"
+    elif [[ "$distance" != "-" && "$bearing" != "-" ]]; then
+        position="${distance} ${bearing}"
+    elif [[ "$distance" != "-" ]]; then
+        position="$distance"
+    else
+        position="$bearing"
+    fi
 
     # Altitude
     altitude=$(echo "$payload" | jq -r '.altitude // "-"' 2>/dev/null)

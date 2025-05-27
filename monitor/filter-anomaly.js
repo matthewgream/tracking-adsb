@@ -105,7 +105,7 @@ function detectRapidVerticalRateChange(aircraft, verticalRates) {
 function detectRapidSpeedChange(speeds) {
     if (!speeds || speeds.length < 3) return undefined;
     const currentSpeed = speeds[speeds.length - 1],
-        prevSpeed = speeds[0],
+        [prevSpeed] = speeds,
         speedChange = Math.abs(currentSpeed - prevSpeed);
     if (speedChange > 100)
         return {
@@ -187,9 +187,7 @@ module.exports = {
             .filter((hex) => this.trackHistory[hex].lastUpdate < thirtyMinutesAgo)
             .forEach((hex) => delete this.trackHistory[hex]);
     },
-    evaluate: (aircraft) => {
-        return aircraft.calculated.anomaly.hasAnomaly;
-    },
+    evaluate: (aircraft) => aircraft.calculated.anomaly.hasAnomaly,
     sort: (a, b) => severityRank[b.calculated.anomaly.highestSeverity] - severityRank[a.calculated.anomaly.highestSeverity],
     getStats: (aircrafts) => {
         const list = aircrafts.filter((a) => a.calculated.anomaly.hasAnomaly);
@@ -209,8 +207,11 @@ module.exports = {
         };
     },
     format: (aircraft) => {
-        const color =
-            aircraft.calculated.anomaly.highestSeverity === 'high' ? ' [HIGH]' : aircraft.calculated.anomaly.highestSeverity === 'medium' ? ' [MEDIUM]' : '';
+        const severityColors = {
+            high: ' [HIGH]',
+            medium: ' [MEDIUM]',
+        };
+        const color = severityColors[aircraft.calculated.anomaly.highestSeverity] || '';
         const count = aircraft.calculated.anomaly.anomalies.length;
         const counts = aircraft.calculated.anomaly.anomalies.reduce(
             (counts, anomaly) => ({

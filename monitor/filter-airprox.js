@@ -35,9 +35,9 @@ function detectAirprox(aircraft, aircraftList, horizontalThreshold, verticalThre
     });
     if (proximateAircraft.length === 0) return undefined;
 
-    const otherAircraft = proximateAircraft.sort(
+    const [otherAircraft] = proximateAircraft.sort(
         (a, b) => helpers.calculateDistance(aircraft.lat, aircraft.lon, a.lat, a.lon) - helpers.calculateDistance(aircraft.lat, aircraft.lon, b.lat, b.lon)
-    )[0];
+    );
     const horizontalDistance = helpers.calculateDistance(aircraft.lat, aircraft.lon, otherAircraft.lat, otherAircraft.lon),
         verticalSeparation = Math.abs(aircraft.calculated.altitude - otherAircraft.calculated.altitude);
 
@@ -104,9 +104,7 @@ module.exports = {
         );
         if (airprox) aircraft.calculated.airprox = airprox;
     },
-    evaluate: (aircraft) => {
-        return aircraft.calculated.airprox.hasAirprox;
-    },
+    evaluate: (aircraft) => aircraft.calculated.airprox.hasAirprox,
     sort: (a, b) => {
         const categoryOrder = { A: 0, B: 1, C: 2, D: 3 };
         const catA = categoryOrder[a.calculated.airprox.riskCategory],
@@ -120,10 +118,10 @@ module.exports = {
             .reduce((counts, category) => ({ ...counts, [category]: (counts[category] || 0) + 1 }), {});
         return {
             ...this.extra.format.getStats_List('aircraft-airprox', list),
-            categoryA: byCategory['A'] || 0,
-            categoryB: byCategory['B'] || 0,
-            categoryC: byCategory['C'] || 0,
-            categoryD: byCategory['D'] || 0,
+            categoryA: byCategory.A || 0,
+            categoryB: byCategory.B || 0,
+            categoryC: byCategory.C || 0,
+            categoryD: byCategory.D || 0,
             byCategory,
         };
     },

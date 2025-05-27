@@ -109,9 +109,7 @@ module.exports = {
         )
             aircraft.calculated.overhead = overhead;
     },
-    evaluate: (aircraft) => {
-        return aircraft.calculated.overhead.willIntersectOverhead;
-    },
+    evaluate: (aircraft) => aircraft.calculated.overhead.willIntersectOverhead,
     sort: (a, b) => (a.calculated.overhead.overheadTime || Infinity) - (b.calculated.overhead.overheadTime || Infinity),
     getStats: (aircrafts) =>
         this.extra.format.getStats_List(
@@ -133,28 +131,37 @@ module.exports = {
             else if (mins === 1) timePhrase = `about a minute ago`;
             else timePhrase = `about ${mins} minutes ago`;
         }
-        const verticalInfo = aircraft.calculated.overhead.verticalRate
-            ? aircraft.calculated.overhead.verticalRate > 0
-                ? ` climbing at ${aircraft.calculated.overhead.verticalRate} ft/min`
-                : ` descending at ${Math.abs(aircraft.calculated.overhead.verticalRate)} ft/min`
-            : '';
-        const altitudeAtOverhead = this.extra.format.formatAltitude(aircraft.calculated.overhead.overheadAltitude);
-        const observationGuide = aircraft.calculated.overhead.overheadFuture
-            ? `${timePhrase} at ${altitudeAtOverhead}, look ${aircraft.calculated.overhead.approachCardinal} ${aircraft.calculated.overhead.verticalAngleDescription}`
+        const {
+            verticalRate,
+            overheadAltitude,
+            overheadFuture,
+            approachBearing,
+            approachCardinal,
+            overheadTime,
+            overheadSeconds,
+            verticalAngle,
+            verticalAngleDescription,
+        } = aircraft.calculated.overhead;
+        let verticalInfo = '';
+        if (verticalRate > 0) verticalInfo = ` climbing at ${verticalRate} ft/min`;
+        else if (verticalRate < 0) verticalInfo = ` descending at ${Math.abs(verticalRate)} ft/min`;
+        const altitudeAtOverhead = this.extra.format.formatAltitude(overheadAltitude);
+        const observationGuide = overheadFuture
+            ? `${timePhrase} at ${altitudeAtOverhead}, look ${approachCardinal} ${verticalAngleDescription}`
             : `passed ${timePhrase} at ${altitudeAtOverhead}`;
         return {
             text: `overhead${verticalInfo}, ${observationGuide}`,
-            warn: aircraft.calculated.overhead.overheadFuture,
+            warn: overheadFuture,
             overheadInfo: {
                 approachDirection: {
-                    bearing: aircraft.calculated.overhead.approachBearing,
-                    cardinal: aircraft.calculated.overhead.approachCardinal,
+                    bearing: approachBearing,
+                    cardinal: approachCardinal,
                 },
-                overheadTime: aircraft.calculated.overhead.overheadTime,
-                overheadFuture: aircraft.calculated.overhead.overheadFuture,
-                overheadSeconds: aircraft.calculated.overhead.overheadSeconds,
-                overheadAltitude: aircraft.calculated.overhead.overheadAltitude,
-                verticalAngle: aircraft.calculated.overhead.verticalAngle,
+                overheadTime,
+                overheadFuture,
+                overheadSeconds,
+                overheadAltitude,
+                verticalAngle,
             },
         };
     },

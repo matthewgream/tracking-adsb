@@ -44,9 +44,7 @@ module.exports = {
             matches: this.flightsCompiled.filter((p) => aircraft?.[p.field] && p.regex.test(aircraft[p.field])).map(({ regex, ...rest }) => rest), // eslint-disable-line no-unused-vars
         };
     },
-    evaluate: (aircraft) => {
-        return aircraft.calculated.specific.matches.length > 0;
-    },
+    evaluate: (aircraft) => aircraft.calculated.specific.matches.length > 0,
     sort: (a, b) => {
         const categoryPriorities = this.conf.priorities || {
             government: 1,
@@ -74,7 +72,7 @@ module.exports = {
         };
     },
     format: (aircraft) => {
-        const matchPrimary = aircraft.calculated.specific.matches[0];
+        const [matchPrimary] = aircraft.calculated.specific.matches;
         const categoryFormatted = matchPrimary.category
             .split('-')
             .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
