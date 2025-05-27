@@ -33,7 +33,8 @@ module.exports = {
             aircrafts.filter((a) => a.calculated.is_proximate)
         ),
     format: (aircraft) => {
-        const direction = aircraft.calculated.positionRelative ? `${aircraft.calculated.positionRelative.cardinalBearing} direction` : 'nearby';
+        const { positionRelative } = aircraft.calculated;
+        const direction = positionRelative ? `${positionRelative.cardinalBearing} direction` : 'nearby';
         const trackInfo = aircraft.track ? ` tracking ${helpers.bearing2Cardinal(aircraft.track)}` : '';
         return {
             text: `nearby, look ${direction}${trackInfo}`,

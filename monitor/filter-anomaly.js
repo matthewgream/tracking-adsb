@@ -120,6 +120,7 @@ function detectRapidSpeedChange(speeds) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const severityRank = { high: 3, medium: 2, low: 1 };
+const severityColors = { high: ' [HIGH]', medium: ' [MEDIUM]' };
 
 module.exports = {
     id: 'anomaly',
@@ -212,29 +213,19 @@ module.exports = {
         };
     },
     format: (aircraft) => {
-        const severityColors = {
-            high: ' [HIGH]',
-            medium: ' [MEDIUM]',
-        };
-        const color = severityColors[aircraft.calculated.anomaly.highestSeverity] || '';
-        const count = aircraft.calculated.anomaly.anomalies.length;
-        const counts = aircraft.calculated.anomaly.anomalies.reduce(
-            (counts, anomaly) => ({
-                ...counts,
-                [anomaly.type]: (counts[anomaly.type] || 0) + 1,
-            }),
-            {}
-        );
-        const text =
+        const { anomaly } = aircraft.calculated;
+        const count = anomaly.anomalies.length;
+        const counts = anomaly.anomalies.reduce((counts, anomaly) => ({ ...counts, [anomaly.type]: (counts[anomaly.type] || 0) + 1 }), {});
+        const list =
             Object.entries(counts)
                 .map(([type, count]) => `${type}${count > 1 ? ':' + count : ''}`)
-                .join(', ') + (count == 1 ? ` (${aircraft.calculated.anomaly.anomalies[0].details})` : ` (...)`);
+                .join(', ') + (count == 1 ? ` (${anomaly.anomalies[0].details})` : ` (...)`);
         return {
-            text: `anomalies: [${count}] ${text}${color}`,
-            warn: aircraft.calculated.anomaly.highestSeverity === 'high',
+            text: `anomalies: [${count}] ${list}${severityColors[anomaly.highestSeverity] || ''}`,
+            warn: anomaly.highestSeverity === 'high',
             anomalyInfo: {
-                types: aircraft.calculated.anomaly.anomalies,
-                severity: aircraft.calculated.anomaly.highestSeverity,
+                types: anomaly.anomalies,
+                severity: anomaly.highestSeverity,
                 counts,
                 count,
             },

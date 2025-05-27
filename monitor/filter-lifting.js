@@ -103,20 +103,14 @@ module.exports = {
         };
     },
     format: (aircraft) => {
-        const airport = aircraft.calculated.lifting.hasKnownOrigin ? aircraft.calculated.lifting.departureAirport : undefined;
-        const { name, icao } = airport || {};
-        const displayName = (() => {
-            if (name && icao) return `${icao} [${name}]`;
-            if (name) return name;
-            if (icao) return icao;
-            return '';
-        })();
+        const { lifting } = aircraft.calculated;
+        const airportName = this.extra.format.formatAirport(lifting.hasKnownOrigin ? lifting.departureAirport : undefined);
         return {
-            text: `climbing${displayName ? ' from ' + displayName : ''} at ${aircraft.calculated.lifting.climbRate} ft/min`,
+            text: `climbing${airportName ? ' from ' + airportName : ''} at ${lifting.climbRate} ft/min`,
             liftingInfo: {
-                departureAirport: aircraft.calculated.lifting.departureAirport,
-                departureTime: aircraft.calculated.lifting.departureTime,
-                climbRate: aircraft.calculated.lifting.climbRate,
+                departureAirport: lifting.departureAirport,
+                departureTime: lifting.departureTime,
+                climbRate: lifting.climbRate,
             },
         };
     },

@@ -58,7 +58,6 @@ function calculateOverheadIntersect(lat, lon, alt, aircraft) {
         approachBearing,
         approachCardinal: helpers.bearing2Cardinal(approachBearing),
         verticalAngle, // Angle to look up in the sky (degrees)
-        verticalAngleDescription: formatVerticalAngle(verticalAngle),
     };
 }
 
@@ -78,32 +77,6 @@ function calculateVerticalAngle(horizontalDistance, relativeAltitude, observerLa
         angle += Math.atan2(curveCorrection, horizontalDistance) * (180 / Math.PI);
     }
     return Math.max(-90, Math.min(90, angle));
-}
-
-function formatVerticalAngle(angle) {
-    if (angle < 0) return 'below horizon'; // For very distant aircraft below observer altitude
-    if (angle < 5) return 'just above horizon';
-    if (angle < 15) return 'low in sky';
-    if (angle < 30) return 'midway up';
-    if (angle < 60) return 'high in sky';
-    if (angle < 80) return 'nearly overhead';
-    return 'directly overhead';
-}
-
-function formatTimePhrase(seconds, isFuture) {
-    const totalSecs = Math.abs(seconds);
-    const mins = Math.floor(totalSecs / 60);
-    const secs = totalSecs % 60;
-    if (isFuture) {
-        if (totalSecs < 30) return `in ${totalSecs} seconds`;
-        if (totalSecs < 90) return secs > 45 ? `in just over a minute` : `in about a minute`;
-        if (mins < 5) return secs > 30 ? `in about ${mins + 1} minutes` : `in about ${mins} minutes`;
-        return `in about ${mins} minutes`;
-    } else {
-        if (totalSecs < 30) return `just now`;
-        if (totalSecs < 90) return `about a minute ago`;
-        return `about ${mins} minutes ago`;
-    }
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -139,25 +112,17 @@ module.exports = {
             aircrafts.filter((a) => a.calculated.overhead.willIntersectOverhead)
         ),
     format: (aircraft) => {
-        const timePhrase = formatTimePhrase(aircraft.calculated.overhead.overheadSeconds, aircraft.calculated.overhead.overheadFuture);
-        const {
-            verticalRate,
-            overheadAltitude,
-            overheadFuture,
-            approachBearing,
-            approachCardinal,
-            overheadTime,
-            overheadSeconds,
-            verticalAngle,
-            verticalAngleDescription,
-        } = aircraft.calculated.overhead;
+        const { overhead } = aircraft.calculated;
+        const { overheadFuture, overheadTime, overheadAltitude, overheadSeconds, approachBearing, approachCardinal, verticalRate, verticalAngle } = overhead;
         let verticalInfo = '';
         if (verticalRate > 0) verticalInfo = ` climbing at ${verticalRate} ft/min`;
         else if (verticalRate < 0) verticalInfo = ` descending at ${Math.abs(verticalRate)} ft/min`;
+        const overheadTimePhrase = this.extra.format.formatTimePhrase(overheadSeconds, overheadFuture);
         const altitudeAtOverhead = this.extra.format.formatAltitude(overheadAltitude);
+        const verticalAngleDescription = this.extra.format.formatVerticalAngle(verticalAngle);
         const observationGuide = overheadFuture
-            ? `${timePhrase} at ${altitudeAtOverhead}, look ${approachCardinal} ${verticalAngleDescription}`
-            : `passed ${timePhrase} at ${altitudeAtOverhead}`;
+            ? `${overheadTimePhrase} at ${altitudeAtOverhead}, look ${approachCardinal} ${verticalAngleDescription}`
+            : `passed ${overheadTimePhrase} at ${altitudeAtOverhead}`;
         return {
             text: `overhead${verticalInfo}, ${observationGuide}`,
             warn: overheadFuture,

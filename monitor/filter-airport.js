@@ -23,8 +23,8 @@ module.exports = {
     evaluate: (aircraft) => aircraft.calculated.airports_nearby.length > 0,
     sort: (a, b) => {
         if (a.calculated.airports_nearby.length === 0 && b.calculated.airports_nearby.length === 0) return 0;
-        else if (a.calculated.airports_nearby.length === 0) return 1;
-        else if (b.calculated.airports_nearby.length === 0) return -1;
+        if (a.calculated.airports_nearby.length === 0) return 1;
+        if (b.calculated.airports_nearby.length === 0) return -1;
         return a.calculated.airports_nearby[0].distance - b.calculated.airports_nearby[0].distance;
     },
     getStats: (aircrafts) => {
@@ -43,10 +43,10 @@ module.exports = {
         };
     },
     format: (aircraft) => {
-        const [airport] = aircraft.calculated.airports_nearby;
-        const name = airport.name ? (airport.icao ? `${airport.icao} [${airport.name}]` : airport.name) : airport.icao || ''; // eslint-disable-line sonarjs/no-nested-conditional
+        const { airports_nearby } = aircraft.calculated;
+        const [airport] = airports_nearby;
         return {
-            text: `near ${name}`,
+            text: `near ${this.extra.format.formatAirport(airport) || 'airport'}`,
             warn: this.conf.priorities?.includes(airport.icao),
         };
     },

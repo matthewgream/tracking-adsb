@@ -60,6 +60,41 @@ function getStats_List(name, list) {
     };
 }
 
+function formatAirport(airport) {
+    const { name, icao } = airport || {};
+    if (name && icao) return `${icao} [${name}]`;
+    if (name) return name;
+    if (icao) return icao;
+    return '';
+}
+
+function formatVerticalAngle(angle) {
+    if (angle < 0) return 'below horizon'; // For very distant aircraft below observer altitude
+    if (angle < 5) return 'just above horizon';
+    if (angle < 15) return 'low in sky';
+    if (angle < 30) return 'midway up';
+    if (angle < 60) return 'high in sky';
+    if (angle < 80) return 'nearly overhead';
+    return 'directly overhead';
+}
+
+// eslint-disable-next-line sonarjs/cognitive-complexity
+function formatTimePhrase(seconds, isFuture) {
+    const totalSecs = Math.abs(seconds);
+    const mins = Math.floor(totalSecs / 60),
+        secs = totalSecs % 60;
+    if (isFuture) {
+        if (totalSecs < 30) return `in ${totalSecs} seconds`;
+        if (totalSecs < 90) return secs > 45 ? `in just over a minute` : `in about a minute`;
+        if (mins < 5) return secs > 30 ? `in about ${mins + 1} minutes` : `in about ${mins} minutes`;
+        return `in about ${mins} minutes`;
+    } else {
+        if (totalSecs < 30) return `just now`;
+        if (totalSecs < 90) return `about a minute ago`;
+        return `about ${mins} minutes ago`;
+    }
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -80,7 +115,7 @@ const filterModules = [
 ];
 const filterMap = Object.fromEntries(filterModules.map((module) => [module.id, module]));
 
-function filterAircraft(lat, lon, aircraftList) {
+function preprocessAircraft(lat, lon, aircraftList) {
     for (const aircraft of aircraftList) {
         aircraft.calculated = {};
         if (!aircraft.lat && !aircraft.lon && aircraft.lastPosition?.lat && aircraft.lastPosition?.lon) {
@@ -96,8 +131,12 @@ function filterAircraft(lat, lon, aircraftList) {
         if (aircraft.calculated.altitude === 'ground') aircraft.calculated.altitude = 0;
         if (aircraft.calculated.altitude === null || typeof aircraft.calculated.altitude !== 'number') delete aircraft.calculated.altitude;
     }
-    const filtered = [];
+    return aircraftList;
+}
+
+function filterAircraft(lat, lon, aircraftList) {
     const filters = filterModules.filter((f) => f.enabled);
+    const filtered = [];
     for (const aircraft of aircraftList) {
         for (const filter of filters) filter.preprocess(aircraft, aircraftList);
         if (filters.some((filter) => filter.evaluate(aircraft))) filtered.push(aircraft);
@@ -131,7 +170,8 @@ async function obtain(flightData, config) {
     try {
         let data = await flightData.fetch(config.link);
         if (config.flights) data = preprocess(config.flights, data);
-        const aircraft = filterAircraft(config.location.lat, config.location.lon, data.aircraft);
+        let aircraft = preprocessAircraft(config.location.lat, config.location.lon, data.aircraft);
+        aircraft = filterAircraft(config.location.lat, config.location.lon, aircraft);
         const status = {
             receivedAircraftCount: data.aircraft.length,
             selectedAircraftCount: aircraft.length,
@@ -322,7 +362,10 @@ function init(config) {
     console.error('airports:', airportData.length());
     if (config.airports?.apply) airportData.apply(config.airports.apply);
     config.airports = airportData.findNearby(config.location.lat, config.location.lon, { distance: config.filters.vicinity.distance });
-    const extra = { data: { airports: airportData, location: config.location }, format: { getStats_List, formatAltitude } };
+    const extra = {
+        data: { airports: airportData, location: config.location },
+        format: { getStats_List, formatAltitude, formatAirport, formatVerticalAngle, formatTimePhrase },
+    };
     filterModules.forEach((module) => module.config(config.filters[module.id], extra));
     publishInit(config.publish);
     process.on('exit', () => publishTerm());

@@ -72,7 +72,8 @@ module.exports = {
         };
     },
     format: (aircraft) => {
-        const [matchPrimary] = aircraft.calculated.specific.matches;
+        const { specific } = aircraft.calculated;
+        const [matchPrimary] = specific.matches;
         const categoryFormatted = matchPrimary.category
             .split('-')
             .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -81,7 +82,7 @@ module.exports = {
             text: `${categoryFormatted}: ${matchPrimary.description}`,
             warn: true,
             specificInfo: {
-                matches: aircraft.calculated.specific.matches,
+                matches: specific.matches,
                 category: matchPrimary.category,
                 description: matchPrimary.description,
             },

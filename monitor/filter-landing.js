@@ -101,26 +101,20 @@ module.exports = {
         };
     },
     format: (aircraft) => {
-        if (!aircraft.calculated.landing.isPossibleLanding)
+        const { landing } = aircraft.calculated;
+        if (!landing.isPossibleLanding)
             return {
-                text: `descending not near known airport, landing in ${Math.floor(aircraft.calculated.landing.groundSeconds / 60)}m`,
+                text: `descending not near known airport, landing in ${Math.floor(landing.groundSeconds / 60)}m`,
                 warn: true,
                 landingInfo: {
-                    groundPosition: aircraft.calculated.landing.groundPosition,
+                    groundPosition: landing.groundPosition,
                 },
             };
-        const [airport] = aircraft.calculated.landing.airports;
-        const { name, icao } = airport || {};
-        const displayName = (() => {
-            if (name && icao) return `${icao} [${name}]`;
-            if (name) return name;
-            if (icao) return icao;
-            return '';
-        })();
+        const [airport] = landing.airports;
         return {
-            text: `approaching ${displayName || 'airport'}`,
+            text: `approaching ${this.extra.format.formatAirport(airport) || 'airport'}`,
             landingInfo: {
-                groundPosition: aircraft.calculated.landing.groundPosition,
+                groundPosition: landing.groundPosition,
             },
         };
     },

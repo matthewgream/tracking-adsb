@@ -101,6 +101,7 @@ function detectWeatherHolding(aircraft) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const severityRank = { high: 3, medium: 2, low: 1 };
+const severityColors = { high: ' [HIGH]', medium: ' [MEDIUM]' };
 
 module.exports = {
     id: 'weather',
@@ -187,26 +188,19 @@ module.exports = {
         };
     },
     format: (aircraft) => {
-        const alert = aircraft.calculated.weather.highestSeverity === 'high' ? ' [SEVERE]' : '';
-        const count = aircraft.calculated.weather.conditions.length;
-        const counts = aircraft.calculated.weather.conditions.reduce(
-            (counts, condition) => ({
-                ...counts,
-                [condition.type]: (counts[condition.type] || 0) + 1,
-            }),
-            {}
-        );
-        const text =
+        const { weather } = aircraft.calculated;
+        const count = weather.conditions.length;
+        const counts = weather.conditions.reduce((counts, condition) => ({ ...counts, [condition.type]: (counts[condition.type] || 0) + 1 }), {});
+        const list =
             Object.entries(counts)
                 .map(([type, count]) => `${type}${count > 1 ? ':' + count : ''}`)
-                .join(', ') + (count == 1 ? ` (${aircraft.calculated.weather.conditions[0].details})` : ` (...)`);
-
+                .join(', ') + (count == 1 ? ` (${weather.conditions[0].details})` : ` (...)`);
         return {
-            text: `weather: [${count}] ${text}${alert}`,
-            warn: aircraft.calculated.weather.highestSeverity === 'high',
+            text: `weather: [${count}] ${list}${severityColors[weather.highestSeverity] || ''}`,
+            warn: weather.highestSeverity === 'high',
             weatherInfo: {
-                conditions: aircraft.calculated.weather.conditions,
-                severity: aircraft.calculated.weather.highestSeverity,
+                conditions: weather.conditions,
+                severity: weather.highestSeverity,
                 counts,
                 count,
             },
