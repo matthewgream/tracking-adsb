@@ -18,13 +18,21 @@ function validateCoordinates(lat, lon) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+const EARTH_RADIUS = 6371;
+
 function nmToKm(nm) {
     return nm * 1.852;
 }
+function feetToKm(feet) {
+    return feet * 0.0003048;
+}
 function knotsToKmPerMin(knots) {
-    return (knots * 1.852) / 60;
+    return nmToKm(knots) / 60;
 }
 
+function normalizeDeg(deg) {
+    return ((deg % 360) + 360) % 360;
+}
 function normalizeLon(lon) {
     const normalized = ((lon + 180) % 360) - 180;
     return normalized === -180 ? 180 : normalized;
@@ -36,8 +44,7 @@ function deg2rad(deg) {
 }
 function track2rad(track) {
     if (typeof track !== 'number' || !Number.isFinite(track)) return Number.NaN;
-    const normalizedTrack = ((track % 360) + 360) % 360;
-    return deg2rad((450 - normalizedTrack) % 360);
+    return deg2rad((450 - normalizeDeg(track)) % 360);
 }
 function calculateDistance(lat1, lon1, lat2, lon2) {
     if ([lat1, lon1, lat2, lon2].some((v) => typeof v !== 'number' || !Number.isFinite(v))) return Number.NaN;
@@ -45,7 +52,6 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
     lon1 = normalizeLon(lon1);
     lon2 = normalizeLon(lon2);
     if (lat1 === lat2 && lon1 === lon2) return 0;
-    const R = 6371; // Earth's mean radius in km
     const lat1Rad = deg2rad(lat1);
     const lat2Rad = deg2rad(lat2);
     const deltaLat = deg2rad(lat2 - lat1);
@@ -55,7 +61,7 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
     const a = sinDeltaLat * sinDeltaLat + Math.cos(lat1Rad) * Math.cos(lat2Rad) * sinDeltaLon * sinDeltaLon;
     const aClamped = Math.min(1, Math.max(0, a));
     const c = 2 * Math.atan2(Math.sqrt(aClamped), Math.sqrt(1 - aClamped));
-    return R * c;
+    return EARTH_RADIUS * c;
 }
 function calculateBearing(lat1, lon1, lat2, lon2) {
     if ([lat1, lon1, lat2, lon2].some((v) => typeof v !== 'number' || !Number.isFinite(v))) return Number.NaN;
@@ -78,8 +84,7 @@ function calculateRelativePosition(refLat, refLon, targetLat, targetLon, track) 
     if (!Number.isFinite(distance) || !Number.isFinite(bearing)) return undefined;
     let relativeTrack, approachingStation;
     if (typeof track === 'number' && Number.isFinite(track)) {
-        const normalizedTrack = ((track % 360) + 360) % 360;
-        relativeTrack = ((normalizedTrack - bearing + 180) % 360) - 180;
+        relativeTrack = ((normalizeDeg(track) - bearing + 180) % 360) - 180;
         approachingStation = Math.abs(relativeTrack) < 90;
     }
     return {
@@ -91,11 +96,10 @@ function calculateRelativePosition(refLat, refLon, targetLat, targetLon, track) 
     };
 }
 function projectPosition(lat, lon, distanceKm, bearingDeg) {
-    const R = 6371; // Earth radius in km
     const latRad = deg2rad(lat);
     const lonRad = deg2rad(lon);
     const bearingRad = deg2rad(bearingDeg);
-    const angularDistance = distanceKm / R;
+    const angularDistance = distanceKm / EARTH_RADIUS;
     const latNewRad = Math.asin(Math.sin(latRad) * Math.cos(angularDistance) + Math.cos(latRad) * Math.sin(angularDistance) * Math.cos(bearingRad));
     const lonRadNew =
         lonRad +
@@ -111,7 +115,7 @@ function calculateVerticalAngle(horizontalDistance, relativeAltitude, observerLa
     if (typeof horizontalDistance !== 'number' || !Number.isFinite(horizontalDistance) || horizontalDistance < 0) return Number.NaN;
     if (typeof relativeAltitude !== 'number' || !Number.isFinite(relativeAltitude)) return Number.NaN;
     if (typeof observerLat !== 'number' || !Number.isFinite(observerLat) || Math.abs(observerLat) > 90) return Number.NaN;
-    const altitudeKm = relativeAltitude * 0.0003048; // feet to km
+    const altitudeKm = feetToKm(relativeAltitude);
     if (horizontalDistance < 0.001) return relativeAltitude > 0 ? 90 : relativeAltitude < 0 ? -90 : 0;
     let angle = Math.atan2(altitudeKm, horizontalDistance) * (180 / Math.PI);
     if (horizontalDistance > 10) {
@@ -125,14 +129,13 @@ function calculateVerticalAngle(horizontalDistance, relativeAltitude, observerLa
 function calculateSlantRange(horizontalDistance, relativeAltitude) {
     if (typeof horizontalDistance !== 'number' || !Number.isFinite(horizontalDistance) || horizontalDistance < 0) return Number.NaN;
     if (typeof relativeAltitude !== 'number' || !Number.isFinite(relativeAltitude)) return Number.NaN;
-    const altitudeKm = Math.abs(relativeAltitude) * 0.0003048; // feet to km
+    const altitudeKm = feetToKm(Math.abs(relativeAltitude));
     return Math.hypot(horizontalDistance, altitudeKm);
 }
 function bearing2Cardinal(bearing) {
     if (typeof bearing !== 'number' || !Number.isFinite(bearing)) return '';
     const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-    const normalizedBearing = ((bearing % 360) + 360) % 360;
-    const index = Math.round((normalizedBearing + 11.25) / 22.5) % 16;
+    const index = Math.round((normalizeDeg(bearing) + 11.25) / 22.5) % 16;
     return directions[index];
 }
 
@@ -510,7 +513,6 @@ function calculateOverheadTrajectory(lat, lon, alt, aircraft) {
     if (aircraft.lat === undefined || aircraft.lon === undefined || !aircraft.track || !aircraft.gs || !aircraft.calculated.altitude) return undefined;
     if (Math.abs(lat) > 90 || Math.abs(lon) > 180 || Math.abs(aircraft.lat) > 90 || Math.abs(aircraft.lon) > 180) return undefined;
     if (aircraft.gs <= 0 || aircraft.gs > 2000) return undefined;
-    const earthRadius = 6371;
     const stationLatRad = deg2rad(lat),
         stationLonRad = deg2rad(lon);
     const aircraftLatRad = deg2rad(aircraft.lat),
@@ -520,16 +522,16 @@ function calculateOverheadTrajectory(lat, lon, alt, aircraft) {
     const cosValue =
         Math.sin(aircraftLatRad) * Math.sin(stationLatRad) + Math.cos(aircraftLatRad) * Math.cos(stationLatRad) * Math.cos(aircraftLonRad - stationLonRad);
     const clampedCosValue = Math.max(-1, Math.min(1, cosValue)); // Clamp to [-1, 1]
-    const initialDistance = earthRadius * Math.acos(clampedCosValue);
+    const initialDistance = EARTH_RADIUS * Math.acos(clampedCosValue);
     const y = Math.sin(stationLonRad - aircraftLonRad) * Math.cos(stationLatRad),
         x = Math.cos(aircraftLatRad) * Math.sin(stationLatRad) - Math.sin(aircraftLatRad) * Math.cos(stationLatRad) * Math.cos(stationLonRad - aircraftLonRad);
     const angleDiff = trackRad - Math.atan2(y, x);
-    const sinValue = Math.sin(initialDistance / earthRadius) * Math.sin(angleDiff);
+    const sinValue = Math.sin(initialDistance / EARTH_RADIUS) * Math.sin(angleDiff);
     const clampedSinValue = Math.max(-1, Math.min(1, sinValue)); // Clamp to [-1, 1]
-    const crossTrackDistance = Math.asin(clampedSinValue) * earthRadius;
-    const cosValue2 = Math.cos(initialDistance / earthRadius) / Math.cos(crossTrackDistance / earthRadius);
+    const crossTrackDistance = Math.asin(clampedSinValue) * EARTH_RADIUS;
+    const cosValue2 = Math.cos(initialDistance / EARTH_RADIUS) / Math.cos(crossTrackDistance / EARTH_RADIUS);
     const clampedCosValue2 = Math.max(-1, Math.min(1, cosValue2)); // Clamp to [-1, 1]
-    const alongTrackDistance = Math.acos(clampedCosValue2) * earthRadius;
+    const alongTrackDistance = Math.acos(clampedCosValue2) * EARTH_RADIUS;
     //
     const overheadFuture = Math.cos(angleDiff) >= 0;
     const overheadDistance = Math.abs(crossTrackDistance);

@@ -1,30 +1,37 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+const EARTH_RADIUS = 6371;
+
+function nmToKm(nm) {
+    return nm * 1.852;
+}
+
 function deg2rad(deg) {
     return deg * (Math.PI / 180);
 }
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371;
     const dLat = deg2rad(lat2 - lat1),
         dLon = deg2rad(lon2 - lon1);
     const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+    return EARTH_RADIUS * c;
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const AIRPORT_ATZ_RADIUS_MAXIMUM = 2.5 * 1.852;
+const AIRPORT_ATZ_RADIUS_MAXIMUM = nmToKm(2.5);
+
 function airportATZradius(airport) {
     if (airport.radius) return airport.radius; // km
-    if (airport.runwayLengthMax) return (airport.runwayLengthMax < 1850 ? 2 : 2.5) * 1.852;
-    return (airport.iata?.trim() === '' ? 2 : 2.5) * 1.852;
+    if (airport.runwayLengthMax) return nmToKm(airport.runwayLengthMax < 1850 ? 2 : 2.5); // UK CAA
+    return nmToKm(airport.iata?.trim() === '' ? 2 : 2.5); // UK CAA
 }
+
 function airportATZaltitude(airport) {
-    return (airport.elevation || 0) + (airport.height || 2000);
+    return (airport.elevation || 0) + (airport.height || 2000); // UK CAA
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -32,7 +39,8 @@ function airportATZaltitude(airport) {
 
 class AirportsData {
     constructor(options) {
-        this.data = require(options.source || 'airports-data.js');
+        this.source = options.source || 'airports-data.js';
+        this._load();
         if (options.apply) this._apply(options.apply);
     }
 
@@ -44,6 +52,12 @@ class AirportsData {
         throw new TypeError('Not implemented in Base Class');
     }
 
+    _load() {
+        this.data = require(this.source);
+        Object.entries(this.data)
+            .filter(([_, airport]) => !airport.icao)
+            .forEach(([icao, airport]) => (airport.icao = icao));
+    }
     _apply(airports) {
         Object.entries(airports).forEach(([icao, airport]) => {
             if (!this.data[icao]) this.data[icao] = { icao };
@@ -59,7 +73,7 @@ class AirportsData {
 class AirportsDataLinearSearch extends AirportsData {
     findNearby(lat, lon, options = {}) {
         return Object.entries(this.data)
-            .filter(([_, airport]) => airport.lat && airport.lon)
+            .filter(([_, airport]) => airport.lat !== undefined && airport.lon !== undefined)
             .map(([_, airport]) => ({ ...airport, distance: calculateDistance(lat, lon, airport.lat, airport.lon) }))
             .filter((airport) => {
                 if (options.distance) return airport.distance <= options.distance;
@@ -87,14 +101,22 @@ class AirportsDataSpatialIndexing extends AirportsData {
     }
 
     buildSpatialIndex() {
-        Object.entries(this.data).forEach(([icao, airport]) => {
-            if (airport.lat === undefined || airport.lon === undefined) return;
-            airport.icao = airport.icao || icao;
-            const gridKey = this.getGridKey(airport.lat, airport.lon);
-            if (!this.spatialIndex.has(gridKey)) this.spatialIndex.set(gridKey, []);
-            this.spatialIndex.get(gridKey).push(airport);
-        });
-        console.error(`airportsData: spatial index built with ${this.spatialIndex.size} grid cells (cache: limit=${this.cacheLimit}, trim=${this.cacheTrim})`);
+        let tot = Object.keys(this.data).length,
+            cnt = 0,
+            max = 0;
+        Object.entries(this.data)
+            .filter(([_, airport]) => airport.lat !== undefined && airport.lon !== undefined)
+            .forEach(([_, airport]) => {
+                const gridKey = this.getGridKey(airport.lat, airport.lon);
+                if (!this.spatialIndex.has(gridKey)) this.spatialIndex.set(gridKey, []);
+                const len = this.spatialIndex.get(gridKey).push(airport);
+                if (len > max) max = len;
+                cnt++;
+            });
+        const num = this.spatialIndex.size;
+        console.error(
+            `airportsData: spatial index built with ${num} grid cells [tot=${tot}, cnt=${cnt}, avg=${(cnt / num).toFixed(1)}, max=${max}] (cache: limit=${this.cacheLimit}, trim=${this.cacheTrim})`
+        );
     }
 
     getGridKey(lat, lon) {
@@ -103,10 +125,8 @@ class AirportsDataSpatialIndexing extends AirportsData {
 
     getAdjacentCells(lat, lon, radiusKm) {
         const cells = new Set();
-        const latRadius = radiusKm / 111.32,
-            lonRadius = radiusKm / (111.32 * Math.cos(deg2rad(lat)));
-        const latCells = Math.ceil(latRadius / this.gridSize),
-            lonCells = Math.ceil(lonRadius / this.gridSize);
+        const latCells = Math.ceil(radiusKm / 111.32 / this.gridSize),
+            lonCells = Math.ceil(radiusKm / (111.32 * Math.cos(deg2rad(lat))) / this.gridSize);
         const centerLatCell = Math.floor(lat / this.gridSize),
             centerLonCell = Math.floor(lon / this.gridSize);
         for (let dlat = -latCells; dlat <= latCells; dlat++)
@@ -122,10 +142,8 @@ class AirportsDataSpatialIndexing extends AirportsData {
             this.cacheOrder.push(cacheKey);
             return this.cacheNearby.get(cacheKey);
         }
-        const candidates = [...this.getAdjacentCells(lat, lon, options.distance || AIRPORT_ATZ_RADIUS_MAXIMUM)].flatMap(
-            (gridKey) => this.spatialIndex.get(gridKey) || []
-        );
-        const results = candidates
+        const results = [...this.getAdjacentCells(lat, lon, options.distance || AIRPORT_ATZ_RADIUS_MAXIMUM)]
+            .flatMap((gridKey) => this.spatialIndex.get(gridKey) || [])
             .map((airport) => ({ ...airport, distance: calculateDistance(lat, lon, airport.lat, airport.lon) }))
             .filter((airport) => {
                 if (options.distance) return airport.distance <= options.distance;
@@ -159,7 +177,8 @@ class AirportsDataSpatialIndexing extends AirportsData {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 module.exports = function (options) {
-    return options?.spatial_indexing ? new AirportsDataSpatialIndexing(options) : new AirportsDataLinearSearch(options);
+    const AirportsDataClass = options?.spatial_indexing ? AirportsDataSpatialIndexing : AirportsDataLinearSearch;
+    return new AirportsDataClass(options);
 };
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------

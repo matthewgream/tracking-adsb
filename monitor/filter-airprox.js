@@ -11,17 +11,13 @@ const DEFAULT_VERTICAL_THRESHOLD = 1000; // feet
 //const DEFAULT_AIRPORT_EXCLUSION_RADIUS = 5; // km - don't report airprox near airports
 const DEFAULT_CLOSURE_RATE_THRESHOLD = 400; // knots - high closure rate increases severity
 
-function nmToKm(nm) {
-    return nm * 1.852;
-}
-
 function calculateRiskCategory(horizontalDistance, verticalSeparation, closureRate) {
     let riskCategory;
-    if (horizontalDistance < nmToKm(0.25) && verticalSeparation < 500)
+    if (horizontalDistance < helpers.nmToKm(0.25) && verticalSeparation < 500)
         riskCategory = 'A'; // Serious risk of collision
-    else if (horizontalDistance < nmToKm(0.5) && verticalSeparation < 500)
+    else if (horizontalDistance < helpers.nmToKm(0.5) && verticalSeparation < 500)
         riskCategory = 'B'; // Safety not assured
-    else if (horizontalDistance < nmToKm(1))
+    else if (horizontalDistance < helpers.nmToKm(1))
         riskCategory = 'C'; // No risk of collision
     else riskCategory = 'D'; // Risk not determined
     if (closureRate && closureRate > DEFAULT_CLOSURE_RATE_THRESHOLD) {
@@ -35,7 +31,7 @@ function detectAirprox(aircraft, aircraftList, horizontalThreshold, verticalThre
     if (aircraft.lat == undefined || aircraft.lon == undefined || !aircraft.calculated.altitude) return undefined;
     if (aircraft.calculated?.airports_nearby?.length > 0) return undefined;
 
-    const horizontalThresholdKm = nmToKm(horizontalThreshold);
+    const horizontalThresholdKm = helpers.nmToKm(horizontalThreshold);
 
     const proximateAircraft = aircraftList.filter((other) => {
         if (other.calculated.airprox) return false;
