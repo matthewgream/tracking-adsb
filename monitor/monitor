@@ -328,10 +328,13 @@ function flightHistoryStats() {
             if (lastTimestamp > newestTimestamp) newestTimestamp = lastTimestamp;
         }
     });
-    const avgTrailLength = (totalTrailEntries / hexes.length).toFixed(1);
+    const avgTrailLength = totalTrailEntries / hexes.length;
     const oldestAge = oldestTimestamp === Infinity ? 0 : Math.round((Date.now() - oldestTimestamp) / 1000);
     const newestAge = newestTimestamp === -Infinity ? 0 : Math.round((Date.now() - newestTimestamp) / 1000);
-    return `tracked=${hexes.length}, entries=${totalTrailEntries}, avg=${avgTrailLength}, oldest=${oldestAge}s, newest=${newestAge}s`;
+    return { tracked: hexes.length, entries: totalTrailEntries, avg: avgTrailLength, oldest: oldestAge, newest: newestAge };
+}
+function flightHistoryStatsString({ tracked, entries, avg, oldest, newest }) {
+    return `tracked=${tracked}, entries=${entries}, avg=${avg}, oldest=${oldest}s, newest=${newest}s`;
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -456,6 +459,9 @@ function init(config) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+const started = new Date().toISOString();
+const counts = { okay: 0, error: 0, empty: 0 };
+
 function deliver(config, alerts) {
     if (alerts.alertsInserted.length > 0) {
         publish(config.publish, 'alert', 'insert', alerts.alertsInserted);
@@ -466,28 +472,52 @@ function deliver(config, alerts) {
         display(config.display, 'alert', 'remove', alerts.alertsRemoved);
     }
 }
-function stats({ alerts, flights }) {
-    const d = new Date().toISOString();
-    // XXX do as json and publish 'status/alerts', status/flights
-    console.error(`${d} STATUS/alerts new=${alerts.alertsInserted.length}, all=${alerts.alertsActive.length}: ${alerts.alertsStats}`);
-    console.error(
-        `${d} STATUS/flights received=${flights.receivedAircraftCount}, filtered=${flights.filteredAircraftCount}, cached=${Object.keys(flightCache).length}, stored=(${flightHistoryStats()})`
-    );
+function stats({ system, alerts, flights }) {
+    const time = new Date();
+
+    const stats = { time: time.getTime(), timeFormatted: time.toISOString() };
+    if (alerts) {
+        const { alertsInserted, alertsRemoved, alertsActive, alertsStats } = alerts;
+        stats.alerts = {
+            inserted: alertsInserted.length,
+            removed: alertsRemoved.length,
+            active: alertsActive.length,
+            byType: Object.values(alertsActive).reduce((list, alert) => ({ ...list, [alert.type]: (list[alert.type] || 0) + 1 }), {}),
+        };
+        console.error(`${time.toISOString()} STATUS/alerts new=${alertsInserted.length}, all=${alertsActive.length}: ${alertsStats}`);
+    }
+    if (flights) {
+        const { receivedAircraftCount: received, filteredAircraftCount: filtered } = flights;
+        const cached = Object.keys(flightCache).length;
+        const stored = flightHistoryStats();
+        stats.flights = { received, filtered, cached, stored };
+        console.error(
+            `${time.toISOString()} STATUS/flights received=${received}, filtered=${filtered}, cached=${cached}, stored=(${flightHistoryStatsString(stored)})`
+        );
+    }
+    if (system) {
+        stats.system = system;
+    }
+    if (Object.keys(stats).length > 0) publish(config.publish, 'state', 'loop', [stats]);
 }
 
 async function loop(config) {
     try {
         const { data, status, filteredAircraft } = await obtain(flightData, config);
-        //console.error('status: ' + JSON.stringify(status));
         if (data) {
             const processedData = track(data);
             const filteredData = { ...processedData, aircraft: filteredAircraft };
             const alertInfo = alerts(config.alerts, filteredData, status.filterStats);
             deliver(config, alertInfo);
-            stats({ alerts: alertInfo, flights: status });
-        } else console.error(`No data received: ${status.error || 'no error details'}`);
+            counts.okay++;
+            stats({ alerts: alertInfo, flights: status, system: { started, counts } });
+        } else {
+            counts.empty++;
+            console.error(`loop: no data received:`, status.error || 'no error details');
+        }
     } catch (e) {
-        console.error(`Error in loop: ${e.message}`);
+        counts.error++;
+        console.error(`loop: exception:`, e);
     }
 }
 
