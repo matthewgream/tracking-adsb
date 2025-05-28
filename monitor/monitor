@@ -219,15 +219,15 @@ async function obtain(flightData, config) {
         let data = await flightData.fetch(config.link);
         data = fixup(config, data);
         let aircraft = preprocessAircraft(config.location.lat, config.location.lon, data.aircraft);
-        aircraft = filterAircraft(aircraft);
+        const filteredAircraft = filterAircraft(aircraft);
         const status = {
             receivedAircraftCount: data.aircraft.length,
-            selectedAircraftCount: aircraft.length,
-            filterStats: Object.fromEntries(filterModules.filter((f) => f.enabled).map((filter) => [filter.id, filter.getStats(aircraft)])),
+            selectedAircraftCount: filteredAircraft.length,
+            filterStats: Object.fromEntries(filterModules.filter((f) => f.enabled).map((filter) => [filter.id, filter.getStats(filteredAircraft)])),
         };
         const now = Date.now();
         aircraft.forEach((a) => (a.calculated.timestamp_updated = now));
-        return { data: { ...data, aircraft }, status };
+        return { data: { ...data, aircraft }, status, filteredAircraft };
     } catch (e) {
         return {
             status: {
@@ -241,6 +241,8 @@ async function obtain(flightData, config) {
 
 const cache = {};
 
+const flightHistory = {};
+
 function track(data) {
     if (data.aircraft?.length > 0) {
         const now = Date.now();
@@ -250,6 +252,21 @@ function track(data) {
             .forEach((aircraft) => {
                 const { hex } = aircraft;
                 currentHexes.add(hex);
+                if (!flightHistory[hex])
+                    flightHistory[hex] = {
+                        trail: [],
+                        maxTrailSize: 20, // Keep last 20 snapshots
+                        maxTrailAge: 10 * 60 * 1000, // Keep 10 minutes of history
+                    };
+                // eslint-disable-next-line unicorn/consistent-destructuring
+                const snapshot = { ...aircraft, calculated: aircraft.calculated ? { ...aircraft.calculated } : undefined };
+                const history = flightHistory[hex];
+                history.trail.push({ timestamp: now, snapshot });
+                const cutoffTime = now - history.maxTrailAge;
+                history.trail = history.trail.filter((entry) => entry.timestamp >= cutoffTime);
+                if (history.trail.length > history.maxTrailSize) history.trail = history.trail.slice(-history.maxTrailSize);
+                // eslint-disable-next-line unicorn/consistent-destructuring
+                aircraft.calculated.trajectoryData = history.trail;
                 cache[hex] = {
                     ...aircraft,
                     processing: {
@@ -263,17 +280,43 @@ function track(data) {
             });
         Object.entries(cache)
             .filter(([hex, entry]) => !currentHexes.has(hex) && now - entry.calculated.timestamp_updated <= CACHE_EXPIRY_TIME * 1000)
-            .forEach(([_, entry]) => {
+            .forEach(([hex, entry]) => {
                 entry.processing.missed_updates += 1;
                 entry.processing.consecutive_misses += 1;
                 entry.processing.consecutive_appearances = 0;
+                if (flightHistory[hex]) entry.calculated.trajectoryData = flightHistory[hex].trail;
             });
         Object.entries(cache)
             .filter(([_, entry]) => now - entry.calculated.timestamp_updated > CACHE_EXPIRY_TIME * 1000)
-            .forEach(([hex, _]) => delete cache[hex]);
+            .forEach(([hex, _]) => {
+                delete cache[hex];
+                delete flightHistory[hex];
+            });
         data = { ...data, aircraft: Object.values(cache) };
     }
     return data;
+}
+
+function flightHistoryStats() {
+    const hexes = Object.keys(flightHistory);
+    if (hexes.length === 0) return 'no aircraft';
+    let totalTrailEntries = 0,
+        oldestTimestamp = Infinity,
+        newestTimestamp = -Infinity;
+    hexes.forEach((hex) => {
+        const trail = flightHistory[hex].trail;
+        totalTrailEntries += trail.length;
+        if (trail.length > 0) {
+            const firstTimestamp = trail[0].timestamp;
+            const lastTimestamp = trail[trail.length - 1].timestamp;
+            if (firstTimestamp < oldestTimestamp) oldestTimestamp = firstTimestamp;
+            if (lastTimestamp > newestTimestamp) newestTimestamp = lastTimestamp;
+        }
+    });
+    const avgTrailLength = (totalTrailEntries / hexes.length).toFixed(1);
+    const oldestAge = oldestTimestamp === Infinity ? 0 : Math.round((Date.now() - oldestTimestamp) / 1000);
+    const newestAge = newestTimestamp === -Infinity ? 0 : Math.round((Date.now() - newestTimestamp) / 1000);
+    return `tracked=${hexes.length}, entries=${totalTrailEntries}, avg=${avgTrailLength}, oldest=${oldestAge}s, newest=${newestAge}s`;
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -389,11 +432,12 @@ function init(config) {
 
 async function loop(config) {
     try {
-        const { data, status } = await obtain(flightData, config);
+        const { data, status, filteredAircraft } = await obtain(flightData, config);
         //console.error('status: ' + JSON.stringify(status));
         if (data) {
             const processedData = track(data);
-            const alertInfo = alerts(config.alerts, processedData, status.filterStats);
+            const filteredData = { ...processedData, aircraft: filteredAircraft };
+            const alertInfo = alerts(config.alerts, filteredData, status.filterStats);
             if (alertInfo.alertsInserted.length > 0) {
                 publish(config.publish, 'alert', 'insert', alertInfo.alertsInserted);
                 display(config.display, 'alert', 'insert', alertInfo.alertsInserted);
@@ -403,8 +447,12 @@ async function loop(config) {
                 display(config.display, 'alert', 'remove', alertInfo.alertsRemoved);
             }
             // XXX publishStatus/displayStatus
+            const d = new Date().toISOString();
             console.error(
-                `${new Date().toISOString()} ALERT/status new=${alertInfo.alertsInserted.length}/all=${alertInfo.alertsActive.length}/src=${data.aircraft.length}: ${alertStats()}`
+                `${d} ALERT/status new=${alertInfo.alertsInserted.length}/all=${alertInfo.alertsActive.length}/src=${data.aircraft.length}: ${alertStats()}`
+            );
+            console.error(
+                `${d} DATA/status received=${status.receivedAircraftCount}, filtered=${status.selectedAircraftCount}, cached=${Object.keys(cache).length}, history=(${flightHistoryStats()})`
             );
         } else console.error(`No data received: ${status.error || 'no error details'}`);
     } catch (e) {
