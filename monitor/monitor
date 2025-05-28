@@ -331,7 +331,7 @@ function flightHistoryStats() {
     const avgTrailLength = totalTrailEntries / hexes.length;
     const oldestAge = oldestTimestamp === Infinity ? 0 : Math.round((Date.now() - oldestTimestamp) / 1000);
     const newestAge = newestTimestamp === -Infinity ? 0 : Math.round((Date.now() - newestTimestamp) / 1000);
-    return { tracked: hexes.length, entries: totalTrailEntries, avg: avgTrailLength, oldest: oldestAge, newest: newestAge };
+    return { tracked: hexes.length, entries: totalTrailEntries, avg: Math.round(avgTrailLength * 10) / 10, oldest: oldestAge, newest: newestAge };
 }
 function flightHistoryStatsString({ tracked, entries, avg, oldest, newest }) {
     return `tracked=${tracked}, entries=${entries}, avg=${avg}, oldest=${oldest}s, newest=${newest}s`;

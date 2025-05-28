@@ -53,6 +53,11 @@ while IFS= read -r line; do
     topic=$(echo "$line" | cut -d' ' -f1)
     payload=$(echo "$line" | cut -d' ' -f2-)
 
+    # Skip if topic is stats
+    if [[ "$topic" == "adsb/state/loop" ]]; then
+        continue
+    fi
+
     # Skip if payload is not valid JSON
     echo "$payload" | jq -e . >/dev/null 2>&1 || continue
 
