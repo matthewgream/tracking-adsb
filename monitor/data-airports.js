@@ -44,6 +44,7 @@ class AirportsDataLinearSearch {
             .filter(([_, airport]) => airport.lat && airport.lon)
             .map(([_, airport]) => ({ ...airport, distance: calculateDistance(lat, lon, airport.lat, airport.lon) }))
             .filter((airport) => {
+                // XXX to check
                 if (options.distance && airport.distance <= options.distance) return true;
                 if (airport.distance > airportATZradius(airport)) return false;
                 if (options.altitude && airportATZaltitude(airport) < options.altitude) return false;
@@ -69,7 +70,10 @@ class AirportsDataSpatialIndexing {
         this.data = require(options.source || 'airports-data.js');
 	if (options.apply) this._apply (options.apply);
         this.spatialIndex = new Map();
-        this.nearbyCache = new Map();
+        this.cacheNearby = new Map();
+        this.cacheLimit = 1000;
+        this.cacheTrim = 100;
+        this.cacheOrder = [];
         this.gridSize = 0.5; // 0.5 degree grid cells (~55km at equator)
         this.buildSpatialIndex();
     }
@@ -108,17 +112,21 @@ class AirportsDataSpatialIndexing {
 
     findNearby(lat, lon, options = {}) {
         const cacheKey = `${lat.toFixed(6)},${lon.toFixed(6)},${JSON.stringify(options)}`;
-        if (this.nearbyCache.has(cacheKey)) return this.nearbyCache.get(cacheKey);
-        const searchRadius = options.distance || 5 * 1.852; // 5km should cover most ATZ radii
-        const candidates = [];
-        const cells = this.getAdjacentCells(lat, lon, searchRadius);
-        cells.forEach((gridKey) => candidates.push(...(this.spatialIndex.get(gridKey) || [])));
+        if (this.cacheNearby.has(cacheKey)) {
+            const index = this.cacheOrder.indexOf(cacheKey);
+            if (index !== -1) this.cacheOrder.splice(index, 1);
+            this.cacheOrder.push(cacheKey);
+            return this.cacheNearby.get(cacheKey);
+        }
+        const searchRadius = options.distance || 5 * 1.852; // 5nm should cover most ATZ radii
+        const candidates = [...this.getAdjacentCells(lat, lon, searchRadius)].flatMap((gridKey) => this.spatialIndex.get(gridKey) || []);
         const results = candidates
             .map((airport) => ({
                 ...airport,
                 distance: calculateDistance(lat, lon, airport.lat, airport.lon),
             }))
             .filter((airport) => {
+                // XXX to check
                 if (options.distance && airport.distance <= options.distance) return true;
                 if (!options.distance && airport.distance <= airportATZradius(airport)) {
                     if (options.altitude && airportATZaltitude(airport) < options.altitude) return false;
@@ -127,16 +135,16 @@ class AirportsDataSpatialIndexing {
                 return false;
             })
             .sort((a, b) => a.distance - b.distance);
-
         const seen = new Set();
-        const uniqueResults = results.filter((airport) => {
+        const uniques = results.filter((airport) => {
             if (seen.has(airport.icao)) return false;
             seen.add(airport.icao);
             return true;
         });
-        this.nearbyCache.set(cacheKey, uniqueResults);
-        if (this.nearbyCache.size > 1000) this.nearbyCache.clear();
-        return uniqueResults;
+        this.cacheNearby.set(cacheKey, uniques);
+        this.cacheOrder.push(cacheKey);
+        if (this.cacheNearby.size > this.cacheLimit) this.cacheOrder.splice(0, this.cacheTrim).forEach((key) => this.cacheNearby.delete(key));
+        return uniques;
     }
 
     _apply(airports) {
@@ -149,7 +157,8 @@ class AirportsDataSpatialIndexing {
     apply(airports) {
 	this._apply (airports);
         this.spatialIndex.clear();
-        this.nearbyCache.clear();
+        this.cacheNearby.clear();
+        this.cacheOrder = [];
         this.buildSpatialIndex();
     }
 }
