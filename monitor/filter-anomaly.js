@@ -165,6 +165,7 @@ module.exports = {
         history.verticalRates = history.verticalRates.slice(-20); // Keep last 20 readings
         history.speeds = history.speeds.slice(-20); // Keep last 20 readings
         history.positions = history.positions.filter((pos) => pos.timestamp >= tenMinutesAgo);
+        history.lastUpdate = now;
 
         const anomalies = [
             detectHighSpeedLowAltitude(aircraft),
@@ -186,9 +187,9 @@ module.exports = {
                     'low'
                 ),
             };
-
-        history.lastUpdate = now;
-        const thirtyMinutesAgo = now - 30 * 60 * 1000;
+    },
+    postprocess: () => {
+        const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000;
         Object.keys(this.trackHistory)
             .filter((hex) => this.trackHistory[hex].lastUpdate < thirtyMinutesAgo)
             .forEach((hex) => delete this.trackHistory[hex]);

@@ -185,6 +185,7 @@ function filterAircraft(aircraftList) {
         for (const filter of filters) filter.preprocess(aircraft, aircraftList);
         if (filters.some((filter) => filter.evaluate(aircraft))) filtered.push(aircraft);
     }
+    for (const filter of filters) if (filter.postprocess) filter.postprocess();
     return filtered.sort((a, b) => {
         const aFilters = filters.filter((f) => f.evaluate(a)),
             bFilters = filters.filter((f) => f.evaluate(b));

@@ -138,6 +138,7 @@ module.exports = {
             history.verticalRates = history.verticalRates.slice(oldestValidIndex);
             history.timestamps = history.timestamps.slice(oldestValidIndex);
         }
+        history.lastUpdate = now;
 
         const conditions = [
             //detectIcingConditions(aircraft),
@@ -161,9 +162,9 @@ module.exports = {
                     'low'
                 ),
             };
-
-        history.lastUpdate = now;
-        const thirtyMinutesAgo = now - 30 * 60 * 1000;
+    },
+    postprocess: () => {
+        const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000;
         Object.keys(this.weatherHistory)
             .filter((hex) => this.weatherHistory[hex].lastUpdate < thirtyMinutesAgo)
             .forEach((hex) => delete this.weatherHistory[hex]);
