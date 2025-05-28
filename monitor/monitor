@@ -281,8 +281,9 @@ function track(data) {
                         maxTrailSize: 20, // Keep last 20 snapshots
                         maxTrailAge: 10 * 60 * 1000, // Keep 10 minutes of history
                     };
-                // eslint-disable-next-line unicorn/consistent-destructuring
-                const snapshot = { ...aircraft, calculated: aircraft.calculated ? { ...aircraft.calculated } : undefined };
+                // eslint-disable-next-line no-unused-vars
+                const { calculated, ...aircraftWithoutCalculated } = aircraft;
+                const snapshot = { ...aircraftWithoutCalculated };
                 const history = flightHistory[hex];
                 history.trail.push({ timestamp: now, snapshot });
                 const cutoffTime = now - history.maxTrailAge;
@@ -290,14 +291,21 @@ function track(data) {
                 if (history.trail.length > history.maxTrailSize) history.trail = history.trail.slice(-history.maxTrailSize);
                 // eslint-disable-next-line unicorn/consistent-destructuring
                 aircraft.calculated.trajectoryData = history.trail;
+                const cachedAircraft = flightCache[hex];
                 flightCache[hex] = {
                     ...aircraft,
+                    calculated: {
+                        ...cachedAircraft?.calculated,
+                        // eslint-disable-next-line unicorn/consistent-destructuring
+                        ...aircraft.calculated,
+                        trajectoryData: history.trail,
+                    },
                     processing: {
-                        first_seen: flightCache?.[hex]?.processing?.first_seen || now,
-                        missed_updates: flightCache?.[hex]?.processing?.missed_updates || 0,
-                        appearances: (flightCache?.[hex]?.processing?.appearances || 0) + 1,
+                        first_seen: cachedAircraft?.processing?.first_seen || now,
+                        missed_updates: cachedAircraft?.processing?.missed_updates || 0,
+                        appearances: (cachedAircraft?.processing?.appearances || 0) + 1,
                         consecutive_misses: 0,
-                        consecutive_appearances: (flightCache?.[hex]?.processing?.consecutive_appearances || 0) + 1,
+                        consecutive_appearances: (cachedAircraft?.processing?.consecutive_appearances || 0) + 1,
                     },
                 };
             });

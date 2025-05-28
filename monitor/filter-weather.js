@@ -6,94 +6,234 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-/*function detectIcingConditions(aircraft) {
+const ICING_CONDITIONS_CONFIG = {
+    enabled: false,
+    temperatureRange: {
+        min: -15,
+        max: 3,
+    },
+    altitudeBands: [
+        {
+            minAltitude: 8000,
+            maxAltitude: 30000,
+            severity: 'medium',
+            description: 'potential icing zone',
+        },
+    ],
+};
+
+const SEVERE_ICING_CONFIG = {
+    enabled: false,
+    sldConditions: {
+        // Supercooled Large Droplet conditions
+        temperatureRange: {
+            min: -10, // °C
+            max: 0, // °C
+        },
+        maxAltitude: 15000,
+        severity: 'high',
+    },
+};
+
+const TURBULENCE_CONFIG = {
+    enabled: true,
+    minimumDataPoints: 5,
+    variationThreshold: 1200, // ft/min variation to trigger analysis
+    severityBands: [
+        {
+            maxStdDev: 600,
+            severity: 'low',
+            description: 'light turbulence',
+        },
+        {
+            maxStdDev: 1000,
+            severity: 'medium',
+            description: 'moderate turbulence',
+        },
+        {
+            maxStdDev: Infinity,
+            severity: 'high',
+            description: 'severe turbulence',
+        },
+    ],
+};
+
+const STRONG_WINDS_CONFIG = {
+    enabled: true,
+    altitudeBands: [
+        {
+            maxAltitude: 10000,
+            threshold: 50, // kts GS/TAS difference
+            severity: 'medium',
+            description: 'low altitude',
+        },
+        {
+            maxAltitude: 20000,
+            threshold: 75, // kts GS/TAS difference
+            severity: 'low',
+            description: 'medium altitude',
+        },
+        {
+            maxAltitude: 30000,
+            threshold: 120, // kts GS/TAS difference
+            severity: 'low',
+            description: 'high altitude',
+        },
+        {
+            maxAltitude: Infinity,
+            threshold: 150, // kts GS/TAS difference
+            severity: 'low',
+            description: 'cruise altitude',
+        },
+    ],
+    minimumDifference: 40, // Minimum GS/TAS difference to consider
+};
+
+const TEMPERATURE_INVERSION_CONFIG = {
+    enabled: true,
+    standardLapseRate: 2, // °C per 1000ft
+    deviationThreshold: 10, // °C deviation from ISA to trigger
+    severity: 'low',
+};
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function detectIcingConditions(config, aircraft) {
+    if (!config.enabled) return undefined;
     if (aircraft.oat === undefined || !aircraft.calculated?.altitude) return undefined;
-    // Potential icing conditions: temps between -15°C and +3°C with visible moisture
-    // We don't have moisture data, so we'll use altitude bands where moisture is likely
-    const inPotentialIcingTemp = aircraft.oat > -15 && aircraft.oat < 3,
-        inPotentialIcingAlt = aircraft.calculated.altitude > 8000 && aircraft.calculated.altitude < 30000;
-    if (inPotentialIcingTemp && inPotentialIcingAlt)
+    // Check if temperature is in icing range
+    const inIcingTemp = aircraft.oat >= config.temperatureRange.min && aircraft.oat <= config.temperatureRange.max;
+    if (!inIcingTemp) return undefined;
+    // Find matching altitude band
+    const altitudeBand = config.altitudeBands.find(
+        (band) => aircraft.calculated.altitude >= band.minAltitude && aircraft.calculated.altitude <= band.maxAltitude
+    );
+    if (altitudeBand)
         return {
             type: 'potential-icing',
-            severity: 'medium',
-            details: `OAT ${aircraft.oat}°C at ${aircraft.calculated.altitude.toFixed(0)} ft`,
+            severity: altitudeBand.severity,
+            details: `OAT ${aircraft.oat}°C at ${aircraft.calculated.altitude.toFixed(0)} ft in ${altitudeBand.description}`,
         };
     return undefined;
-}*/
+}
 
-/*function detectSeverIcingRisk(aircraft) {
+function detectSevereIcingRisk(config, aircraft) {
+    if (!config.enabled) return undefined;
     if (aircraft.oat === undefined || !aircraft.calculated?.altitude) return undefined;
-    // Supercooled large droplet (SLD) icing risk
-    if (aircraft.oat > -10 && aircraft.oat < 0 && aircraft.calculated.altitude < 15000)
+    const { sldConditions } = config;
+    // Check SLD conditions
+    if (
+        aircraft.oat >= sldConditions.temperatureRange.min &&
+        aircraft.oat <= sldConditions.temperatureRange.max &&
+        aircraft.calculated.altitude <= sldConditions.maxAltitude
+    )
         return {
             type: 'severe-icing',
-            severity: 'high',
-            details: `SLD risk ${aircraft.oat}°C at ${aircraft.calculated.altitude.toFixed(0)} ft`,
+            severity: sldConditions.severity,
+            details: `SLD risk: ${aircraft.oat}°C at ${aircraft.calculated.altitude.toFixed(0)} ft`,
         };
     return undefined;
-}*/
+}
 
-function detectTurbulence(verticalRates) {
-    if (!verticalRates || verticalRates.length < 5) return undefined;
+function detectTurbulence(config, verticalRates) {
+    if (!config.enabled) return undefined;
+    if (!verticalRates || verticalRates.length < config.minimumDataPoints) return undefined;
     const maxRate = Math.max(...verticalRates),
         minRate = Math.min(...verticalRates),
         variation = maxRate - minRate;
-
-    if (variation > 1200) {
+    if (variation > config.variationThreshold) {
+        // Calculate standard deviation
         const avg = verticalRates.reduce((sum, rate) => sum + rate, 0) / verticalRates.length;
         const variance = verticalRates.reduce((sum, rate) => sum + (rate - avg) ** 2, 0) / verticalRates.length;
         const stdDev = Math.sqrt(variance);
-        const getSeverity = (stdDev) => {
-            if (stdDev > 1000) return 'high';
-            if (stdDev > 600) return 'medium';
-            return 'low';
-        };
-        return {
-            type: 'turbulence',
-            severity: getSeverity(stdDev),
-            details: `vertical rate ${stdDev.toFixed(0)} ft/min`,
-        };
+        // Find severity band
+        const severityBand = config.severityBands.find((band) => stdDev <= band.maxStdDev);
+        if (severityBand)
+            return {
+                type: 'turbulence',
+                severity: severityBand.severity,
+                details: `${severityBand.description}: vertical rate σ=${stdDev.toFixed(0)} ft/min`,
+                debug: {
+                    standardDeviation: stdDev,
+                    variation: variation,
+                    dataPoints: verticalRates.length,
+                },
+            };
     }
     return undefined;
 }
 
-function detectStrongWinds(aircraft) {
+function detectStrongWinds(config, aircraft) {
+    if (!config.enabled) return undefined;
     if (!aircraft.gs || !aircraft.tas || !aircraft.calculated?.altitude) return undefined;
     const difference = Math.abs(aircraft.gs - aircraft.tas);
-    let threshold = 100; // Default for high altitude
-    if (aircraft.calculated.altitude < 10000)
-        threshold = 50; // Lower threshold for low altitude
-    else if (aircraft.calculated.altitude < 20000) threshold = 75; // Medium threshold for medium altitude
-    if (difference > threshold)
+    // Skip if below minimum difference
+    if (difference < config.minimumDifference) return undefined;
+    // Find the appropriate altitude band
+    const altitudeBand = config.altitudeBands.find((band) => aircraft.calculated.altitude <= band.maxAltitude);
+    if (!altitudeBand) return undefined;
+    // Check if difference exceeds threshold
+    if (difference > altitudeBand.threshold)
         return {
             type: 'strong-winds',
-            severity: aircraft.calculated.altitude < 10000 ? 'medium' : 'low',
-            details: `${difference.toFixed(0)} kts GS/TAS difference`,
+            severity: altitudeBand.severity,
+            details: `${difference.toFixed(0)} kts GS/TAS difference at ${altitudeBand.description}`,
+            debug: {
+                altitude: aircraft.calculated.altitude,
+                groundSpeed: aircraft.gs,
+                trueAirspeed: aircraft.tas,
+                threshold: altitudeBand.threshold,
+            },
         };
     return undefined;
 }
 
-function detectTemperatureInversion(aircraft) {
+function detectTemperatureInversion(config, aircraft) {
+    if (!config.enabled) return undefined;
     if (aircraft.oat === undefined || !aircraft.calculated?.altitude) return undefined;
-    // Standard atmosphere temperature lapse rate is roughly 2°C per 1000ft
-    const expectedTemp = 15 - (aircraft.calculated.altitude / 1000) * 2,
-        tempDeviation = aircraft.oat - expectedTemp;
-    // Significant temperature inversion or deviation
-    if (Math.abs(tempDeviation) > 10)
+    // Calculate expected temperature based on ISA
+    const seaLevelTemp = 15; // °C (ISA standard)
+    const expectedTemp = seaLevelTemp - (aircraft.calculated.altitude / 1000) * config.standardLapseRate;
+    const tempDeviation = aircraft.oat - expectedTemp;
+    // Check if deviation exceeds threshold
+    if (Math.abs(tempDeviation) > config.deviationThreshold)
         return {
             type: 'temperature-anomaly',
-            severity: 'low',
+            severity: config.severity,
             details: `${tempDeviation > 0 ? '+' : ''}${tempDeviation.toFixed(0)}°C from ISA`,
+            debug: {
+                actualTemp: aircraft.oat,
+                expectedTemp: expectedTemp.toFixed(1),
+                altitude: aircraft.calculated.altitude,
+            },
         };
     return undefined;
 }
 
-function detectWeatherHolding(aircraft) {
-    if (!aircraft.calculated?.in_holding) return undefined;
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function calculateVariables(aircraft) {
+    const trajectoryData = aircraft.calculated?.trajectoryData || [];
+    const verticalRates = [],
+        timestamps = [];
+    trajectoryData.forEach((entry) => {
+        const { snapshot, timestamp } = entry;
+        if (snapshot.baro_rate !== undefined) {
+            verticalRates.push(snapshot.baro_rate);
+            timestamps.push(timestamp);
+        }
+    });
+    const lastSnapshot = trajectoryData[trajectoryData.length - 1]?.snapshot;
+    const now = Date.now();
+    if (aircraft.baro_rate !== undefined && (!lastSnapshot || lastSnapshot.baro_rate !== aircraft.baro_rate)) {
+        verticalRates.push(aircraft.baro_rate);
+        timestamps.push(now);
+    }
     return {
-        type: 'weather-holding',
-        severity: 'medium',
-        details: 'holding pattern in weather conditions',
+        verticalRates,
+        timestamps,
     };
 }
 
@@ -111,48 +251,18 @@ module.exports = {
     config: (conf, extra) => {
         this.conf = conf;
         this.extra = extra;
-        this.weatherHistory = {};
     },
     preprocess: (aircraft) => {
         aircraft.calculated.weather = { inWeatherOperation: false, conditions: [] };
-
         if (!aircraft.hex) return;
-
-        if (!this.weatherHistory[aircraft.hex])
-            this.weatherHistory[aircraft.hex] = {
-                verticalRates: [],
-                timestamps: [],
-                lastUpdate: Date.now(),
-            };
-        const history = this.weatherHistory[aircraft.hex];
-        const now = Date.now();
-
-        if (aircraft.baro_rate !== undefined) {
-            history.verticalRates.push(aircraft.baro_rate);
-            history.timestamps.push(now);
-        }
-
-        const fiveMinutesAgo = now - 5 * 60 * 1000;
-        const oldestValidIndex = history.timestamps.findIndex((ts) => ts >= fiveMinutesAgo);
-        if (oldestValidIndex > 0) {
-            history.verticalRates = history.verticalRates.slice(oldestValidIndex);
-            history.timestamps = history.timestamps.slice(oldestValidIndex);
-        }
-        history.lastUpdate = now;
-
+        const variables = calculateVariables(aircraft);
         const conditions = [
-            //detectIcingConditions(aircraft),
-            //detectSeverIcingRisk(aircraft),
-            detectTurbulence(history.verticalRates),
-            detectStrongWinds(aircraft),
-            detectTemperatureInversion(aircraft),
+            detectIcingConditions(ICING_CONDITIONS_CONFIG, aircraft),
+            detectSevereIcingRisk(SEVERE_ICING_CONFIG, aircraft),
+            detectTurbulence(TURBULENCE_CONFIG, variables.verticalRates),
+            detectStrongWinds(STRONG_WINDS_CONFIG, aircraft),
+            detectTemperatureInversion(TEMPERATURE_INVERSION_CONFIG, aircraft),
         ].filter(Boolean);
-
-        if (conditions.length > 0) {
-            const condition = detectWeatherHolding(aircraft);
-            if (condition) conditions.push(condition);
-        }
-
         if (conditions.length > 0)
             aircraft.calculated.weather = {
                 inWeatherOperation: true,
@@ -162,12 +272,6 @@ module.exports = {
                     'low'
                 ),
             };
-    },
-    postprocess: () => {
-        const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000;
-        Object.keys(this.weatherHistory)
-            .filter((hex) => this.weatherHistory[hex].lastUpdate < thirtyMinutesAgo)
-            .forEach((hex) => delete this.weatherHistory[hex]);
     },
     evaluate: (aircraft) => aircraft.calculated.weather.inWeatherOperation,
     sort: (a, b) => {

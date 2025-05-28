@@ -6,114 +6,403 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function detectHighSpeedLowAltitude(aircraft) {
+const HIGH_SPEED_LOW_ALTITUDE_CONFIG = {
+    enabled: true,
+    thresholds: [
+        {
+            maxAltitude: 10000,
+            maxSpeed: 350,
+            severity: 'high',
+            description: 'very low altitude',
+        },
+        {
+            maxAltitude: 15000,
+            maxSpeed: 400,
+            severity: 'medium',
+            description: 'low altitude',
+        },
+        {
+            maxAltitude: 20000,
+            maxSpeed: 450,
+            severity: 'low',
+            description: 'medium altitude',
+        },
+    ],
+};
+
+const LOW_SPEED_HIGH_ALTITUDE_CONFIG = {
+    enabled: true,
+    thresholds: [
+        {
+            minAltitude: 30000,
+            minSpeed: 250,
+            severity: 'medium',
+            description: 'high altitude',
+        },
+        {
+            minAltitude: 35000,
+            minSpeed: 280,
+            severity: 'high',
+            description: 'very high altitude',
+        },
+    ],
+};
+
+const TEMPERATURE_ANOMALY_CONFIG = {
+    enabled: true,
+    machTempCoefficient: 40, // Temperature rise coefficient for Mach number
+    deviationThreshold: 20, // °C deviation between expected and actual
+    severity: 'low',
+};
+
+const ALTITUDE_OSCILLATION_CONFIG = {
+    enabled: true,
+    minimumDataPoints: 5,
+    minimumAltitudeChange: 300, // ft between readings to count as a change
+    thresholds: [
+        {
+            minDirectionChanges: 2,
+            minAltitudeRange: 2000, // ft total variation
+            severity: 'medium',
+            description: 'altitude oscillation',
+        },
+        {
+            minDirectionChanges: 4,
+            minAltitudeRange: 3000, // ft total variation
+            severity: 'high',
+            description: 'severe altitude oscillation',
+        },
+    ],
+};
+
+const ALTITUDE_DEVIATION_CONFIG = {
+    enabled: true,
+    minimumDataPoints: 5,
+    stabilityThreshold: 300, // ft - consider aircraft "at" assigned altitude
+    deviationBands: [
+        {
+            minDeviation: 800,
+            maxDeviation: 1500,
+            severity: 'low',
+            description: 'minor deviation',
+        },
+        {
+            minDeviation: 1500,
+            maxDeviation: 3000,
+            severity: 'medium',
+            description: 'significant deviation',
+        },
+        {
+            minDeviation: 3000,
+            maxDeviation: Infinity,
+            severity: 'high',
+            description: 'major deviation',
+        },
+    ],
+};
+
+const EXTREME_VERTICAL_RATE_CONFIG = {
+    enabled: true,
+    thresholds: [
+        {
+            minRate: 6000,
+            maxRate: 8000,
+            severity: 'medium',
+            description: 'extreme vertical rate',
+        },
+        {
+            minRate: 8000,
+            maxRate: 10000,
+            severity: 'high',
+            description: 'very extreme vertical rate',
+        },
+        {
+            minRate: 10000,
+            maxRate: Infinity,
+            severity: 'high',
+            description: 'exceptional vertical rate',
+        },
+    ],
+};
+
+const RAPID_VERTICAL_RATE_CHANGE_CONFIG = {
+    enabled: true,
+    minimumDataPoints: 3,
+    lookbackIndex: 2, // Compare current to this many readings back
+    thresholds: [
+        {
+            minChange: 2000,
+            maxChange: 3000,
+            severity: 'medium',
+            description: 'rapid vertical rate change',
+        },
+        {
+            minChange: 3000,
+            maxChange: 5000,
+            severity: 'high',
+            description: 'very rapid vertical rate change',
+        },
+        {
+            minChange: 5000,
+            maxChange: Infinity,
+            severity: 'high',
+            description: 'extreme vertical rate change',
+        },
+    ],
+    tcasBoost: true, // Increase severity if TCAS is active
+};
+
+const RAPID_SPEED_CHANGE_CONFIG = {
+    enabled: true,
+    minimumDataPoints: 3,
+    thresholds: [
+        {
+            minChange: 100,
+            maxChange: 150,
+            maxUpdates: 20,
+            severity: 'low',
+            description: 'rapid speed change',
+        },
+        {
+            minChange: 150,
+            maxChange: 200,
+            maxUpdates: 10,
+            severity: 'medium',
+            description: 'very rapid speed change',
+        },
+        {
+            minChange: 200,
+            maxChange: Infinity,
+            maxUpdates: 5,
+            severity: 'high',
+            description: 'extreme speed change',
+        },
+    ],
+};
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function detectHighSpeedLowAltitude(config, aircraft) {
+    if (!config.enabled) return undefined;
     if (!aircraft.gs || !aircraft.calculated?.altitude) return undefined;
-    if (aircraft.gs > 400 && aircraft.calculated.altitude < 15000)
+    // Find matching threshold
+    const threshold = config.thresholds.find((t) => aircraft.calculated.altitude <= t.maxAltitude && aircraft.gs > t.maxSpeed);
+    if (threshold)
         return {
             type: 'high-speed-low-altitude',
-            severity: 'medium',
-            details: `${aircraft.gs.toFixed(0)} kts at ${aircraft.calculated.altitude.toFixed(0)} ft`,
+            severity: threshold.severity,
+            details: `${aircraft.gs.toFixed(0)} kts at ${aircraft.calculated.altitude.toFixed(0)} ft (${threshold.description})`,
+            debug: {
+                speed: aircraft.gs,
+                altitude: aircraft.calculated.altitude,
+                threshold: threshold.maxSpeed,
+            },
         };
     return undefined;
 }
 
-function detectLowSpeedHighAltitude(aircraft) {
+function detectLowSpeedHighAltitude(config, aircraft) {
+    if (!config.enabled) return undefined;
     if (!aircraft.gs || !aircraft.calculated?.altitude) return undefined;
-    if (aircraft.gs < 250 && aircraft.calculated.altitude > 30000)
+    // Find matching threshold
+    const threshold = config.thresholds.find((t) => aircraft.calculated.altitude >= t.minAltitude && aircraft.gs < t.minSpeed);
+    if (threshold)
         return {
             type: 'low-speed-high-altitude',
-            severity: 'medium',
-            details: `${aircraft.gs.toFixed(0)} kts at ${aircraft.calculated.altitude.toFixed(0)} ft`,
+            severity: threshold.severity,
+            details: `${aircraft.gs.toFixed(0)} kts at ${aircraft.calculated.altitude.toFixed(0)} ft (${threshold.description})`,
+            debug: {
+                speed: aircraft.gs,
+                altitude: aircraft.calculated.altitude,
+                threshold: threshold.minSpeed,
+            },
         };
     return undefined;
 }
 
-function detectTemperatureAnomaly(aircraft) {
+function detectTemperatureAnomaly(config, aircraft) {
+    if (!config.enabled) return undefined;
     if (aircraft.oat === undefined || aircraft.tat === undefined || !aircraft.mach) return undefined;
-    const expectedTempDiff = aircraft.mach * aircraft.mach * 40,
-        actualTempDiff = aircraft.tat - aircraft.oat;
-    if (Math.abs(actualTempDiff - expectedTempDiff) > 20)
+    const expectedTempDiff = aircraft.mach * aircraft.mach * config.machTempCoefficient;
+    const actualTempDiff = aircraft.tat - aircraft.oat;
+    const deviation = Math.abs(actualTempDiff - expectedTempDiff);
+    if (deviation > config.deviationThreshold)
         return {
             type: 'temperature-anomaly',
-            severity: 'low',
-            details: `OAT ${aircraft.oat}°C, TAT ${aircraft.tat}°C, Mach ${aircraft.mach.toFixed(2)}`,
+            severity: config.severity,
+            details: `OAT ${aircraft.oat}°C, TAT ${aircraft.tat}°C, Mach ${aircraft.mach.toFixed(2)} (${deviation.toFixed(0)}°C deviation)`,
+            debug: {
+                expectedDiff: expectedTempDiff.toFixed(1),
+                actualDiff: actualTempDiff,
+                deviation: deviation,
+            },
         };
     return undefined;
 }
 
-function detectAltitudeOscillation(altitudes) {
-    if (!altitudes || altitudes.length < 5) return undefined;
+function detectAltitudeOscillation(config, altitudes) {
+    if (!config.enabled) return undefined;
+    if (!altitudes || altitudes.length < config.minimumDataPoints) return undefined;
+    // Calculate direction changes
     const altChangeDirections = [];
-    for (let i = 1; i < altitudes.length; i++)
-        if (Math.abs(altitudes[i] - altitudes[i - 1]) > 300) altChangeDirections.push(altitudes[i] - altitudes[i - 1] > 0 ? 'up' : 'down');
+    for (let i = 1; i < altitudes.length; i++) {
+        const change = altitudes[i] - altitudes[i - 1];
+        if (Math.abs(change) > config.minimumAltitudeChange) altChangeDirections.push(change > 0 ? 'up' : 'down');
+    }
+    // Count direction changes
     let directionChanges = 0;
-    for (let i = 1; i < altChangeDirections.length; i++) if (altChangeDirections[i] !== altChangeDirections[i - 1]) directionChanges++;
+    for (let i = 1; i < altChangeDirections.length; i++) {
+        if (altChangeDirections[i] !== altChangeDirections[i - 1]) directionChanges++;
+    }
+    // Calculate altitude range
     const maxAlt = Math.max(...altitudes),
         minAlt = Math.min(...altitudes),
         altVariation = maxAlt - minAlt;
-    if (directionChanges >= 2 && altVariation > 2000)
+    // Find matching threshold
+    const threshold = config.thresholds.find((t) => directionChanges >= t.minDirectionChanges && altVariation >= t.minAltitudeRange);
+    if (threshold)
         return {
             type: 'altitude-oscillation',
-            severity: 'medium',
+            severity: threshold.severity,
             details: `${directionChanges} direction changes, ${altVariation.toFixed(0)} ft range`,
+            debug: {
+                directionChanges: directionChanges,
+                altitudeRange: altVariation,
+                dataPoints: altitudes.length,
+            },
         };
     return undefined;
 }
 
-function detectAltitudeDeviation(aircraft, recentAltitudes) {
-    if (!aircraft.nav_altitude_mcp || !aircraft.calculated?.altitude || !recentAltitudes || recentAltitudes.length < 5) return undefined;
-    const assignedAlt = aircraft.nav_altitude_mcp,
-        currentAlt = aircraft.calculated.altitude;
-    const wasAtAssigned = recentAltitudes.some((alt) => Math.abs(alt - assignedAlt) < 300),
-        deviation = Math.abs(currentAlt - assignedAlt);
-    if (wasAtAssigned && deviation > 800 && deviation < 3000)
+function detectAltitudeDeviation(config, aircraft, recentAltitudes) {
+    if (!config.enabled) return undefined;
+    if (!aircraft.nav_altitude_mcp || !aircraft.calculated?.altitude || !recentAltitudes || recentAltitudes.length < config.minimumDataPoints) return undefined;
+    const assignedAlt = aircraft.nav_altitude_mcp;
+    const currentAlt = aircraft.calculated.altitude;
+    // Check if aircraft was previously at assigned altitude
+    const wasAtAssigned = recentAltitudes.some((alt) => Math.abs(alt - assignedAlt) < config.stabilityThreshold);
+    if (!wasAtAssigned) return undefined;
+    const deviation = Math.abs(currentAlt - assignedAlt);
+    // Find matching deviation band
+    const deviationBand = config.deviationBands.find((band) => deviation >= band.minDeviation && deviation < band.maxDeviation);
+    if (deviationBand)
         return {
             type: 'altitude-deviation',
-            severity: 'medium',
-            details: `${deviation.toFixed(0)} ft deviation from assigned ${assignedAlt} ft`,
+            severity: deviationBand.severity,
+            details: `${deviation.toFixed(0)} ft ${deviationBand.description} from assigned ${assignedAlt} ft`,
+            debug: {
+                currentAltitude: currentAlt,
+                assignedAltitude: assignedAlt,
+                deviation: deviation,
+            },
         };
     return undefined;
 }
 
-function detectExtremeVerticalRate(aircraft) {
+function detectExtremeVerticalRate(config, aircraft) {
+    if (!config.enabled) return undefined;
     if (!aircraft.baro_rate) return undefined;
     const absRate = Math.abs(aircraft.baro_rate);
-    if (absRate > 6000)
+    // Find matching threshold
+    const threshold = config.thresholds.find((t) => absRate >= t.minRate && absRate < t.maxRate);
+    if (threshold)
         return {
             type: 'extreme-vertical-rate',
-            severity: 'medium',
-            details: `${aircraft.baro_rate > 0 ? '+' : '-'}${absRate.toFixed(0)} ft/min`,
+            severity: threshold.severity,
+            details: `${aircraft.baro_rate > 0 ? '+' : '-'}${absRate.toFixed(0)} ft/min (${threshold.description})`,
+            debug: {
+                verticalRate: aircraft.baro_rate,
+                threshold: threshold.minRate,
+            },
         };
     return undefined;
 }
 
-function detectRapidVerticalRateChange(aircraft, verticalRates) {
-    if (!aircraft.baro_rate || !verticalRates || verticalRates.length < 3) return undefined;
-    const currentRate = verticalRates[verticalRates.length - 1],
-        prevRate = verticalRates[verticalRates.length - 3],
-        rateChange = Math.abs(currentRate - prevRate);
-    if (rateChange > 2000)
+function detectRapidVerticalRateChange(config, aircraft, verticalRates) {
+    if (!config.enabled) return undefined;
+    if (!aircraft.baro_rate || !verticalRates || verticalRates.length < config.minimumDataPoints) return undefined;
+    const currentRate = verticalRates[verticalRates.length - 1];
+    const prevRate = verticalRates[verticalRates.length - 1 - config.lookbackIndex];
+    const rateChange = Math.abs(currentRate - prevRate);
+    // Find matching threshold
+    const threshold = config.thresholds.find((t) => rateChange >= t.minChange && rateChange < t.maxChange);
+    if (threshold) {
+        let severity = threshold.severity;
+        // Boost severity if TCAS is active
+        if (config.tcasBoost && aircraft.nav_modes && aircraft.nav_modes.includes('tcas')) severity = severity === 'medium' ? 'high' : severity;
         return {
             type: 'vertical-rate-change',
-            //severity: aircraft.nav_modes && aircraft.nav_modes.includes('tcas') ? 'high' : 'medium',
-            severity: 'medium',
+            severity: severity,
             details: `${rateChange.toFixed(0)} ft/min change${aircraft.nav_modes && aircraft.nav_modes.includes('tcas') ? ' (TCAS active)' : ''}`,
+            debug: {
+                currentRate: currentRate,
+                previousRate: prevRate,
+                change: rateChange,
+                tcasActive: aircraft.nav_modes && aircraft.nav_modes.includes('tcas'),
+            },
+        };
+    }
+    return undefined;
+}
+
+function detectRapidSpeedChange(config, speeds) {
+    if (!config.enabled) return undefined;
+    if (!speeds || speeds.length < config.minimumDataPoints) return undefined;
+    const currentSpeed = speeds[speeds.length - 1];
+    const firstSpeed = speeds[0];
+    const speedChange = Math.abs(currentSpeed - firstSpeed);
+    const updateCount = speeds.length;
+    // Find matching threshold considering both change magnitude and time
+    const threshold = config.thresholds.find((t) => speedChange >= t.minChange && speedChange < t.maxChange && updateCount <= t.maxUpdates);
+    if (threshold)
+        return {
+            type: 'rapid-speed-change',
+            severity: threshold.severity,
+            details: `${speedChange.toFixed(0)} knots in ${updateCount} updates (${threshold.description})`,
+            debug: {
+                initialSpeed: firstSpeed,
+                currentSpeed: currentSpeed,
+                change: speedChange,
+                updates: updateCount,
+            },
         };
     return undefined;
 }
 
-function detectRapidSpeedChange(speeds) {
-    if (!speeds || speeds.length < 3) return undefined;
-    const currentSpeed = speeds[speeds.length - 1],
-        [prevSpeed] = speeds,
-        speedChange = Math.abs(currentSpeed - prevSpeed);
-    if (speedChange > 100)
-        return {
-            type: 'rapid-speed-change',
-            severity: 'low',
-            details: `${speedChange.toFixed(0)} knots in ${speeds.length} updates`,
-        };
-    return undefined;
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function calculateVariables(aircraft) {
+    const trajectoryData = aircraft.calculated?.trajectoryData || [];
+    const altitudes = [],
+        verticalRates = [],
+        speeds = [],
+        positions = [],
+        timestamps = [];
+    trajectoryData.forEach((entry) => {
+        const { snapshot, timestamp } = entry;
+        timestamps.push(timestamp);
+        if (snapshot.calculated?.altitude !== undefined) altitudes.push(snapshot.calculated.altitude);
+        if (snapshot.baro_rate !== undefined) verticalRates.push(snapshot.baro_rate);
+        if (snapshot.gs !== undefined) speeds.push(snapshot.gs);
+        if (snapshot.lat !== undefined && snapshot.lon !== undefined) positions.push({ lat: snapshot.lat, lon: snapshot.lon, timestamp: timestamp });
+    });
+    const lastSnapshot = trajectoryData[trajectoryData.length - 1]?.snapshot;
+    const now = Date.now();
+    if (aircraft.calculated?.altitude !== undefined && (!lastSnapshot || lastSnapshot.calculated?.altitude !== aircraft.calculated.altitude))
+        altitudes.push(aircraft.calculated.altitude);
+    if (aircraft.baro_rate !== undefined && (!lastSnapshot || lastSnapshot.baro_rate !== aircraft.baro_rate)) verticalRates.push(aircraft.baro_rate);
+    if (aircraft.gs !== undefined && (!lastSnapshot || lastSnapshot.gs !== aircraft.gs)) speeds.push(aircraft.gs);
+    if (aircraft.lat !== undefined && aircraft.lon !== undefined && (!lastSnapshot || lastSnapshot.lat !== aircraft.lat || lastSnapshot.lon !== aircraft.lon))
+        positions.push({ lat: aircraft.lat, lon: aircraft.lon, timestamp: now });
+    return {
+        altitudes,
+        verticalRates,
+        speeds,
+        positions,
+        timestamps,
+    };
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -130,54 +419,21 @@ module.exports = {
     config: (conf, extra) => {
         this.conf = conf;
         this.extra = extra;
-        this.trackHistory = {};
     },
     preprocess: (aircraft) => {
         aircraft.calculated.anomaly = { hasAnomaly: false, anomalies: [] };
         if (!aircraft.hex) return;
-        if (!this.trackHistory[aircraft.hex])
-            this.trackHistory[aircraft.hex] = {
-                positions: [],
-                altitudes: [],
-                verticalRates: [],
-                speeds: [],
-                timestamps: [],
-                lastUpdate: Date.now(),
-            };
-        const history = this.trackHistory[aircraft.hex];
-        const now = Date.now();
-        if (aircraft.calculated?.altitude !== undefined) {
-            history.altitudes.push(aircraft.calculated.altitude);
-            history.timestamps.push(now);
-        }
-        if (aircraft.baro_rate !== undefined) history.verticalRates.push(aircraft.baro_rate);
-        if (aircraft.gs !== undefined) history.speeds.push(aircraft.gs);
-        if (aircraft.lat !== undefined && aircraft.lon !== undefined) history.positions.push({ lat: aircraft.lat, lon: aircraft.lon, timestamp: now });
-        const tenMinutesAgo = now - 10 * 60 * 1000;
-        const oldestIndex = history.timestamps.findIndex((ts) => ts >= tenMinutesAgo);
-        if (oldestIndex === -1) {
-            history.altitudes = [];
-            history.timestamps = [];
-        } else {
-            history.altitudes = history.altitudes.slice(oldestIndex);
-            history.timestamps = history.timestamps.slice(oldestIndex);
-        }
-        history.verticalRates = history.verticalRates.slice(-20); // Keep last 20 readings
-        history.speeds = history.speeds.slice(-20); // Keep last 20 readings
-        history.positions = history.positions.filter((pos) => pos.timestamp >= tenMinutesAgo);
-        history.lastUpdate = now;
-
+        const variables = calculateVariables(aircraft);
         const anomalies = [
-            detectHighSpeedLowAltitude(aircraft),
-            detectLowSpeedHighAltitude(aircraft),
-            detectTemperatureAnomaly(aircraft),
-            detectAltitudeOscillation(history.altitudes),
-            detectAltitudeDeviation(aircraft, history.altitudes),
-            detectExtremeVerticalRate(aircraft),
-            detectRapidVerticalRateChange(aircraft, history.verticalRates),
-            detectRapidSpeedChange(history.speeds),
+            detectHighSpeedLowAltitude(HIGH_SPEED_LOW_ALTITUDE_CONFIG, aircraft),
+            detectLowSpeedHighAltitude(LOW_SPEED_HIGH_ALTITUDE_CONFIG, aircraft),
+            detectTemperatureAnomaly(TEMPERATURE_ANOMALY_CONFIG, aircraft),
+            detectAltitudeOscillation(ALTITUDE_OSCILLATION_CONFIG, variables.altitudes),
+            detectAltitudeDeviation(ALTITUDE_DEVIATION_CONFIG, aircraft, variables.altitudes),
+            detectExtremeVerticalRate(EXTREME_VERTICAL_RATE_CONFIG, aircraft),
+            detectRapidVerticalRateChange(RAPID_VERTICAL_RATE_CHANGE_CONFIG, aircraft, variables.verticalRates),
+            detectRapidSpeedChange(RAPID_SPEED_CHANGE_CONFIG, variables.speeds),
         ].filter(Boolean);
-
         if (anomalies.length > 0)
             aircraft.calculated.anomaly = {
                 hasAnomaly: true,
@@ -187,12 +443,6 @@ module.exports = {
                     'low'
                 ),
             };
-    },
-    postprocess: () => {
-        const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000;
-        Object.keys(this.trackHistory)
-            .filter((hex) => this.trackHistory[hex].lastUpdate < thirtyMinutesAgo)
-            .forEach((hex) => delete this.trackHistory[hex]);
     },
     evaluate: (aircraft) => aircraft.calculated.anomaly.hasAnomaly,
     sort: (a, b) => {
