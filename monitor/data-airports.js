@@ -32,6 +32,7 @@ function airportATZaltitude(airport) {
 class AirportsDataLinearSearch {
     constructor(options) {
         this.data = require(options.source || 'airports-data.js');
+	if (options.apply) this._apply (options.apply);
     }
 
     length() {
@@ -51,7 +52,7 @@ class AirportsDataLinearSearch {
             .sort((a, b) => a.distance - b.distance);
     }
 
-    apply(airports) {
+    _apply(airports) {
         Object.entries(airports).forEach(([icao, airport]) => {
             if (!this.data[icao]) this.data[icao] = { icao };
             Object.assign(this.data[icao], airport);
@@ -66,6 +67,7 @@ class AirportsDataLinearSearch {
 class AirportsDataSpatialIndexing {
     constructor(options) {
         this.data = require(options.source || 'airports-data.js');
+	if (options.apply) this._apply (options.apply);
         this.spatialIndex = new Map();
         this.nearbyCache = new Map();
         this.gridSize = 0.5; // 0.5 degree grid cells (~55km at equator)
@@ -137,12 +139,15 @@ class AirportsDataSpatialIndexing {
         return uniqueResults;
     }
 
-    apply(airports) {
+    _apply(airports) {
         Object.entries(airports).forEach(([icao, airport]) => {
             if (!this.data[icao]) this.data[icao] = { icao };
             Object.assign(this.data[icao], airport);
             console.error(`airportsData: override [${icao}]: ${JSON.stringify(this.data[icao])}`);
         });
+    }
+    apply(airports) {
+	this._apply (airports);
         this.spatialIndex.clear();
         this.nearbyCache.clear();
         this.buildSpatialIndex();
