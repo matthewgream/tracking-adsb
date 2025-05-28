@@ -681,7 +681,7 @@ function analyzeOverheadTrajectory(aircraft, trajectoryData, overheadResult, sta
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function calculateClosureDetails(aircraft, otherAircraft) {
+function calculateClosureDetails(aircraft, other) {
     // ===== 1. Input validation and screening =====
 
     const required = {
@@ -689,46 +689,41 @@ function calculateClosureDetails(aircraft, otherAircraft) {
         aircraft_lon: aircraft?.lon,
         aircraft_track: aircraft?.track,
         aircraft_gs: aircraft?.gs,
-        other_lat: otherAircraft?.lat,
-        other_lon: otherAircraft?.lon,
-        other_track: otherAircraft?.track,
-        other_gs: otherAircraft?.gs,
+        other_lat: other?.lat,
+        other_lon: other?.lon,
+        other_track: other?.track,
+        other_gs: other?.gs,
     };
     for (const [key, value] of Object.entries(required))
         if (value === undefined || value === null) return { error: `Missing required field: ${key}`, closureRate: undefined, closureTime: undefined };
     const aircraftCheck = validateCoordinates(aircraft.lat, aircraft.lon);
     if (!aircraftCheck.valid) return { error: `Aircraft 1 ${aircraftCheck.error}`, closureRate: undefined, closureTime: undefined };
-    const otherCheck = validateCoordinates(otherAircraft.lat, otherAircraft.lon);
+    const otherCheck = validateCoordinates(other.lat, other.lon);
     if (!otherCheck.valid) return { error: `Aircraft 2 ${otherCheck.error}`, closureRate: undefined, closureTime: undefined };
     const validations = [
         validateNumber(aircraft.track, 0, 360, 'aircraft 1 track'),
         validateNumber(aircraft.gs, 0, 2000, 'aircraft 1 ground speed'),
-        validateNumber(otherAircraft.track, 0, 360, 'aircraft 2 track'),
-        validateNumber(otherAircraft.gs, 0, 2000, 'aircraft 2 ground speed'),
+        validateNumber(other.track, 0, 360, 'aircraft 2 track'),
+        validateNumber(other.gs, 0, 2000, 'aircraft 2 ground speed'),
     ];
     for (const check of validations) if (!check.valid) return { error: check.error, closureRate: undefined, closureTime: undefined };
 
     // ===== 2. Core calculations =====
 
     const velocityComponents1 = calculateVelocityComponents(aircraft.track, aircraft.gs);
-    const velocityComponents2 = calculateVelocityComponents(otherAircraft.track, otherAircraft.gs);
+    const velocityComponents2 = calculateVelocityComponents(other.track, other.gs);
     const relativeVelocity = { x: velocityComponents2.x - velocityComponents1.x, y: velocityComponents2.y - velocityComponents1.y };
     const closureRate = Math.hypot(relativeVelocity.x, relativeVelocity.y);
-    const currentDistance = calculateDistance(aircraft.lat, aircraft.lon, otherAircraft.lat, otherAircraft.lon);
-    const bearing = calculateBearing(aircraft.lat, aircraft.lon, otherAircraft.lat, otherAircraft.lon);
-    const closureAnalysis = analyzeClosureGeometry(aircraft, otherAircraft, relativeVelocity, bearing, currentDistance);
+    const currentDistance = calculateDistance(aircraft.lat, aircraft.lon, other.lat, other.lon);
+    const bearing = calculateBearing(aircraft.lat, aircraft.lon, other.lat, other.lon);
+    const closureAnalysis = analyzeClosureGeometry(aircraft, other, relativeVelocity, bearing, currentDistance);
     let closureTime, closestApproach;
     if (closureAnalysis.valid && Math.abs(closureAnalysis.closureVelocity) > 0.1) {
         const timeToClosest = closureAnalysis.timeToClosestApproach;
         if (timeToClosest > 0 && timeToClosest < 600) {
             closureTime = timeToClosest;
             const closestPoint1 = projectPosition(aircraft.lat, aircraft.lon, knotsToKmPerMin(aircraft.gs) * (timeToClosest / 60), aircraft.track);
-            const closestPoint2 = projectPosition(
-                otherAircraft.lat,
-                otherAircraft.lon,
-                knotsToKmPerMin(otherAircraft.gs) * (timeToClosest / 60),
-                otherAircraft.track
-            );
+            const closestPoint2 = projectPosition(other.lat, other.lon, knotsToKmPerMin(other.gs) * (timeToClosest / 60), other.track);
             closestApproach = {
                 distance: calculateDistance(closestPoint1.lat, closestPoint1.lon, closestPoint2.lat, closestPoint2.lon),
                 timeSeconds: timeToClosest,

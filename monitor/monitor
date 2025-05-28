@@ -12,6 +12,10 @@ const CACHE_EXPIRY_TIME = 5 * 60;
 const ALERT_EXPIRY_TIME = 5 * 60;
 const CYCLE_SCAN_TIME = 30;
 
+async function do_yield() {
+    return await new Promise((resolve) => setImmediate(resolve));
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -95,44 +99,48 @@ function formatTimePhrase(seconds, isFuture) {
     }
 }
 
+const categoryDescriptions = {
+    A0: 'No Information',
+    A1: 'Light (<15.5k lbs)',
+    A2: 'Small (15.5-75k lbs)',
+    A3: 'Large (75-300k lbs)',
+    A4: 'High-Vortex Large (B757)',
+    A5: 'Heavy (>300k lbs)',
+    A6: 'High Performance (>5g and >400 kts)',
+    A7: 'Rotorcraft',
+    B0: 'No Information',
+    B1: 'Glider/Sailplane',
+    B2: 'Lighter-than-air',
+    B3: 'Parachutist/Skydiver',
+    B4: 'Ultralight/hang-glider/paraglider',
+    B5: 'Reserved',
+    B6: 'UAV/Drone',
+    B7: 'Space/Trans-atmospheric vehicle',
+    C0: 'No Information',
+    C1: 'Surface - Emergency Vehicle',
+    C2: 'Surface - Service Vehicle',
+    C3: 'Point Obstacle (incl. balloons)',
+    C4: 'Cluster Obstacle',
+    C5: 'Line Obstacle',
+    C6: 'Reserved',
+    C7: 'Reserved',
+    D0: 'No Information',
+    D1: 'Reserved',
+    D2: 'Reserved',
+    D3: 'Reserved',
+    D4: 'Reserved',
+    D5: 'Reserved',
+    D6: 'Reserved',
+    D7: 'Reserved',
+};
 function formatCategoryCode(categoryCode) {
     if (!categoryCode) return '';
-    const categoryDescriptions = {
-        A0: 'No Information',
-        A1: 'Light (<15.5k lbs)',
-        A2: 'Small (15.5-75k lbs)',
-        A3: 'Large (75-300k lbs)',
-        A4: 'High-Vortex Large (B757)',
-        A5: 'Heavy (>300k lbs)',
-        A6: 'High Performance (>5g and >400 kts)',
-        A7: 'Rotorcraft',
-        B0: 'No Information',
-        B1: 'Glider/Sailplane',
-        B2: 'Lighter-than-air',
-        B3: 'Parachutist/Skydiver',
-        B4: 'Ultralight/hang-glider/paraglider',
-        B5: 'Reserved',
-        B6: 'UAV/Drone',
-        B7: 'Space/Trans-atmospheric vehicle',
-        C0: 'No Information',
-        C1: 'Surface - Emergency Vehicle',
-        C2: 'Surface - Service Vehicle',
-        C3: 'Point Obstacle (incl. balloons)',
-        C4: 'Cluster Obstacle',
-        C5: 'Line Obstacle',
-        C6: 'Reserved',
-        C7: 'Reserved',
-        D0: 'No Information',
-        D1: 'Reserved',
-        D2: 'Reserved',
-        D3: 'Reserved',
-        D4: 'Reserved',
-        D5: 'Reserved',
-        D6: 'Reserved',
-        D7: 'Reserved',
-    };
     const description = categoryDescriptions[categoryCode];
     return description ? `${categoryCode}: ${description}` : `${categoryCode}`;
+}
+
+function formatInit() {
+    return { formatStatsList, formatAltitude, formatAirport, formatVerticalAngle, formatTimePhrase };
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -140,7 +148,8 @@ function formatCategoryCode(categoryCode) {
 
 const helpers = require('./filter-helpers.js');
 
-function preprocessAircraft(lat, lon, aircraftList) {
+function preprocessAircraft(config, aircraftList) {
+    const { lat, lon } = config.location;
     for (const aircraft of aircraftList) {
         aircraft.calculated = {};
         if (!aircraft.lat && !aircraft.lon && aircraft.lastPosition?.lat && aircraft.lastPosition?.lon) {
@@ -178,12 +187,18 @@ const filterModules = [
 
 const filterMap = Object.fromEntries(filterModules.map((module) => [module.id, module]));
 
-function filterAircraft(aircraftList) {
+function filterInit(config, extra) {
+    filterModules.forEach((module) => module.config(config[module.id], extra));
+}
+async function filterAircraft(aircraftList) {
     const filters = filterModules.filter((f) => f.enabled);
     const filtered = [];
+    let count = 0,
+        cycle = 50;
     for (const aircraft of aircraftList) {
         for (const filter of filters) filter.preprocess(aircraft, aircraftList);
         if (filters.some((filter) => filter.evaluate(aircraft))) filtered.push(aircraft);
+        if (++count % cycle === 0) await do_yield();
     }
     for (const filter of filters) if (filter.postprocess) filter.postprocess();
     return filtered.sort((a, b) => {
@@ -218,11 +233,12 @@ async function obtain(flightData, config) {
     try {
         let data = await flightData.fetch(config.link);
         data = fixup(config, data);
-        let aircraft = preprocessAircraft(config.location.lat, config.location.lon, data.aircraft);
-        const filteredAircraft = filterAircraft(aircraft);
+        const receivedAircraft = data.aircraft;
+        let aircraft = preprocessAircraft(config, receivedAircraft);
+        const filteredAircraft = await filterAircraft(aircraft);
         const status = {
-            receivedAircraftCount: data.aircraft.length,
-            selectedAircraftCount: filteredAircraft.length,
+            receivedAircraftCount: receivedAircraft.length,
+            filteredAircraftCount: filteredAircraft.length,
             filterStats: Object.fromEntries(filterModules.filter((f) => f.enabled).map((filter) => [filter.id, filter.getStats(filteredAircraft)])),
         };
         const now = Date.now();
@@ -239,8 +255,7 @@ async function obtain(flightData, config) {
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const cache = {};
-
+const flightCache = {};
 const flightHistory = {};
 
 function track(data) {
@@ -267,18 +282,18 @@ function track(data) {
                 if (history.trail.length > history.maxTrailSize) history.trail = history.trail.slice(-history.maxTrailSize);
                 // eslint-disable-next-line unicorn/consistent-destructuring
                 aircraft.calculated.trajectoryData = history.trail;
-                cache[hex] = {
+                flightCache[hex] = {
                     ...aircraft,
                     processing: {
-                        first_seen: cache?.[hex]?.processing?.first_seen || now,
-                        missed_updates: cache?.[hex]?.processing?.missed_updates || 0,
-                        appearances: (cache?.[hex]?.processing?.appearances || 0) + 1,
+                        first_seen: flightCache?.[hex]?.processing?.first_seen || now,
+                        missed_updates: flightCache?.[hex]?.processing?.missed_updates || 0,
+                        appearances: (flightCache?.[hex]?.processing?.appearances || 0) + 1,
                         consecutive_misses: 0,
-                        consecutive_appearances: (cache?.[hex]?.processing?.consecutive_appearances || 0) + 1,
+                        consecutive_appearances: (flightCache?.[hex]?.processing?.consecutive_appearances || 0) + 1,
                     },
                 };
             });
-        Object.entries(cache)
+        Object.entries(flightCache)
             .filter(([hex, entry]) => !currentHexes.has(hex) && now - entry.calculated.timestamp_updated <= CACHE_EXPIRY_TIME * 1000)
             .forEach(([hex, entry]) => {
                 entry.processing.missed_updates += 1;
@@ -286,13 +301,13 @@ function track(data) {
                 entry.processing.consecutive_appearances = 0;
                 if (flightHistory[hex]) entry.calculated.trajectoryData = flightHistory[hex].trail;
             });
-        Object.entries(cache)
+        Object.entries(flightCache)
             .filter(([_, entry]) => now - entry.calculated.timestamp_updated > CACHE_EXPIRY_TIME * 1000)
             .forEach(([hex, _]) => {
-                delete cache[hex];
+                delete flightCache[hex];
                 delete flightHistory[hex];
             });
-        data = { ...data, aircraft: Object.values(cache) };
+        data = { ...data, aircraft: Object.values(flightCache) };
     }
     return data;
 }
@@ -360,9 +375,11 @@ function alerts(config, processedData, stats) {
             return id;
         });
     return {
+        alertsSource: processedData.aircraft,
         alertsInserted: alerts,
         alertsRemoved,
         alertsActive: Object.values(alertsActive),
+        alertsStats: alertStats(),
     };
 }
 
@@ -402,32 +419,60 @@ function alertMeta(format, aircraft) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-let flightData;
+let flightData, airportData;
+
+function flightDataInit() {
+    return require('./data-flights.js');
+}
+
+function airportDataInit(config, { location, range, vicinity }) {
+    const airportData = require('./data-airports.js')(config);
+    const airportText = [`${airportData.length()} loaded`];
+    if (range) {
+        const airports = airportData.findNearby(location.lat, location.lon, { distance: helpers.nmToKm(range) });
+        airportText.push(`${airports.length} in range (${range}nm/${helpers.nmToKm(range).toFixed(0)}km)`);
+    }
+    if (vicinity) {
+        const airports = airportData.findNearby(location.lat, location.lon, { distance: vicinity });
+        airportText.push(`${airports.length} in vicinity (${vicinity}km): ${airports.map((a) => formatAirport(a)).join(' ,')}`);
+    }
+    console.error(`airports: ${airportText.join('; ')}`);
+    return airportData;
+}
 
 function init(config) {
     console.error('***');
     console.error('config:', config);
-    flightData = require('./data-flights.js');
-    const airportData = require('./data-airports.js')(config.airports);
-    const airportText = [`${airportData.length()} loaded`];
-    if (config.range_max) {
-        const airportInRange = airportData.findNearby(config.location.lat, config.location.lon, { distance: helpers.nmToKm(config.range_max) });
-        airportText.push(`${airportInRange.length} in range (${config.range_max}nm/${helpers.nmToKm(config.range_max).toFixed(0)}km)`);
-    }
-    if (config.filters.vicinity.distance) {
-        const airportVicinity = airportData.findNearby(config.location.lat, config.location.lon, { distance: config.filters.vicinity.distance });
-        airportText.push(
-            `${airportVicinity.length} in vicinity (${config.filters.vicinity.distance}km): ${airportVicinity.map((airport) => formatAirport(airport)).join(' ,')}`
-        );
-    }
-    console.error(`airports: ${airportText.join('; ')}`);
-    const extra = {
-        data: { airports: airportData, location: config.location },
-        format: { formatStatsList, formatAltitude, formatAirport, formatVerticalAngle, formatTimePhrase },
-    };
-    filterModules.forEach((module) => module.config(config.filters[module.id], extra));
+    const data = { location: config.location, range: config.range_max, vicinity: config.filters.vicinity.distance };
+    flightData = flightDataInit();
+    airportData = airportDataInit(config.airports, data);
+    data.airports = airportData;
+    const format = formatInit();
+    filterInit(config.filters, { data, format });
     publishInit(config.publish);
     process.on('exit', () => publishTerm());
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function deliver(config, alerts) {
+    if (alerts.alertsInserted.length > 0) {
+        publish(config.publish, 'alert', 'insert', alerts.alertsInserted);
+        display(config.display, 'alert', 'insert', alerts.alertsInserted);
+    }
+    if (alerts.alertsRemoved.length > 0) {
+        publish(config.publish, 'alert', 'remove', alerts.alertsRemoved);
+        display(config.display, 'alert', 'remove', alerts.alertsRemoved);
+    }
+}
+function stats({ alerts, flights }) {
+    const d = new Date().toISOString();
+    // XXX do as json and publish 'status/alerts', status/flights
+    console.error(`${d} STATUS/alerts new=${alerts.alertsInserted.length}, all=${alerts.alertsActive.length}: ${alerts.alertsStats}`);
+    console.error(
+        `${d} STATUS/flights received=${flights.receivedAircraftCount}, filtered=${flights.filteredAircraftCount}, cached=${Object.keys(flightCache).length}, stored=(${flightHistoryStats()})`
+    );
 }
 
 async function loop(config) {
@@ -438,22 +483,8 @@ async function loop(config) {
             const processedData = track(data);
             const filteredData = { ...processedData, aircraft: filteredAircraft };
             const alertInfo = alerts(config.alerts, filteredData, status.filterStats);
-            if (alertInfo.alertsInserted.length > 0) {
-                publish(config.publish, 'alert', 'insert', alertInfo.alertsInserted);
-                display(config.display, 'alert', 'insert', alertInfo.alertsInserted);
-            }
-            if (alertInfo.alertsRemoved.length > 0) {
-                publish(config.publish, 'alert', 'remove', alertInfo.alertsRemoved);
-                display(config.display, 'alert', 'remove', alertInfo.alertsRemoved);
-            }
-            // XXX publishStatus/displayStatus
-            const d = new Date().toISOString();
-            console.error(
-                `${d} ALERT/status new=${alertInfo.alertsInserted.length}/all=${alertInfo.alertsActive.length}/src=${data.aircraft.length}: ${alertStats()}`
-            );
-            console.error(
-                `${d} DATA/status received=${status.receivedAircraftCount}, filtered=${status.selectedAircraftCount}, cached=${Object.keys(cache).length}, history=(${flightHistoryStats()})`
-            );
+            deliver(config, alertInfo);
+            stats({ alerts: alertInfo, flights: status });
         } else console.error(`No data received: ${status.error || 'no error details'}`);
     } catch (e) {
         console.error(`Error in loop: ${e.message}`);
