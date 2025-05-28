@@ -49,7 +49,7 @@ function calculateVerticalAngle(horizontalDistance, relativeAltitude, observerLa
     if (horizontalDistance > 10) {
         // Only apply for distances > 10km
         const latRad = Math.abs((observerLat * Math.PI) / 180);
-        const curveCorrection = (horizontalDistance * horizontalDistance) / (12800 * Math.cos(latRad));
+        const curveCorrection = horizontalDistance ** 2 / (12800 * Math.cos(latRad));
         angle += Math.atan2(curveCorrection, horizontalDistance) * (180 / Math.PI);
     }
     return Math.max(-90, Math.min(90, angle));
@@ -57,7 +57,7 @@ function calculateVerticalAngle(horizontalDistance, relativeAltitude, observerLa
 
 function calculateSlantRange(horizontalDistance, relativeAltitude) {
     const altitudeKm = relativeAltitude * 0.0003048; // feet to km
-    return Math.hypot(horizontalDistance * horizontalDistance + altitudeKm * altitudeKm);
+    return Math.hypot(horizontalDistance ** 2 + altitudeKm ** 2);
 }
 
 function bearing2Cardinal(bearing) {
@@ -141,8 +141,9 @@ function calculateLandingTrajectory(lat, lon, rad, aircraft) {
     if (groundDistance > rad) return undefined;
     const groundTime = new Date(Date.now() + groundSeconds * 1000);
     const groundPosition = calculateRelativePosition(lat, lon, groundLat, groundLon, aircraft.track);
+
     return {
-        willIntersectGround: true,
+        isLanding: true,
         groundLat: Number(groundLat.toFixed(6)),
         groundLon: Number(groundLon.toFixed(6)),
         groundDistance,
@@ -176,8 +177,9 @@ function calculateLiftingTrajectory(lat, lon, aircraft) {
     const projectedLat = aircraft.lat + dy * latPerKm;
     const projectedLon = aircraft.lon + dx * lonPerKm;
     const projectedPosition = calculateRelativePosition(lat, lon, projectedLat, projectedLon, aircraft.track);
+
     return {
-        isLiftingOff: true,
+        isLifting: true,
         departureAltitude: aircraft.calculated.altitude,
         climbRate: aircraft.baro_rate,
         liftingScore,
@@ -229,6 +231,7 @@ function calculateOverheadTrajectory(lat, lon, alt, aircraft) {
     const relativeAltitude = overheadAltitude - stationAltitude;
     const slantRange = calculateSlantRange(overheadDistance, relativeAltitude);
     const verticalAngle = calculateVerticalAngle(overheadDistance, relativeAltitude, lat);
+
     return {
         willIntersectOverhead: true,
         overheadFuture,
@@ -270,6 +273,7 @@ function calculateClosureDetails(aircraft, otherAircraft) {
             if (Math.abs(closureTime) > 600) closureTime = undefined;
         }
     }
+
     return { closureRate, closureTime };
 }
 

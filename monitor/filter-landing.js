@@ -16,18 +16,18 @@ module.exports = {
         this.extra = extra;
     },
     preprocess: (aircraft) => {
-        aircraft.calculated.landing = { willIntersectGround: false };
+        aircraft.calculated.landing = { isLanding: false };
         if (aircraft.calculated?.altitude < this.conf.altitude && aircraft.calculated?.distance < this.conf.distance) {
             const { lat, lon } = this.extra.data.location;
             const landing = helpers.calculateLandingTrajectory(lat, lon, this.conf.radius, aircraft);
-            if (landing?.willIntersectGround) {
+            if (landing?.isLanding) {
                 landing.airports = this.extra.data.airports.findNearby(landing.groundLat, landing.groundLon);
                 landing.isPossibleLanding = landing.airports.length > 0;
                 aircraft.calculated.landing = landing;
             }
         }
     },
-    evaluate: (aircraft) => aircraft.calculated.landing.willIntersectGround,
+    evaluate: (aircraft) => aircraft.calculated.landing.isLanding,
     sort: (a, b) => {
         a = a.calculated.landing;
         b = b.calculated.landing;
@@ -38,7 +38,7 @@ module.exports = {
         return a.groundSeconds - b.groundSeconds;
     },
     getStats: (aircrafts) => {
-        const list = aircrafts.filter((a) => a.calculated.landing.willIntersectGround);
+        const list = aircrafts.filter((a) => a.calculated.landing.isLanding);
         return {
             ...this.extra.format.getStats_List('aircraft-landing', list),
             landingCount: list.filter((a) => a.calculated.landing.isPossibleLanding).length,

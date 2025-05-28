@@ -16,11 +16,11 @@ module.exports = {
         this.extra = extra;
     },
     preprocess: (aircraft) => {
-        aircraft.calculated.lifting = { isLiftingOff: false };
+        aircraft.calculated.lifting = { isLifting: false };
         if (!this.conf.altitude || aircraft.calculated?.altitude < this.conf.altitude) {
             const { lat, lon } = this.extra.data.location;
             const lifting = helpers.calculateLiftingTrajectory(lat, lon, aircraft);
-            if (lifting?.isLiftingOff) {
+            if (lifting?.isLifting) {
                 lifting.nearbyAirports = this.extra.data.airports.findNearby(aircraft.lat, aircraft.lon, {
                     distance: this.conf.radius,
                 });
@@ -30,14 +30,14 @@ module.exports = {
             }
         }
     },
-    evaluate: (aircraft) => aircraft.calculated.lifting.isLiftingOff,
+    evaluate: (aircraft) => aircraft.calculated.lifting.isLifting,
     sort: (a, b) => {
         a = a.calculated.lifting;
         b = b.calculated.lifting;
         return b.liftingScore - a.liftingScore;
     },
     getStats: (aircrafts) => {
-        const list = aircrafts.filter((a) => a.calculated.lifting.isLiftingOff);
+        const list = aircrafts.filter((a) => a.calculated.lifting.isLifting);
         const byAirport = list
             .filter((a) => a.calculated.lifting.hasKnownOrigin)
             .map((a) => a.calculated.lifting.departureAirport?.name || a.calculated.lifting.departureAirport?.icao)

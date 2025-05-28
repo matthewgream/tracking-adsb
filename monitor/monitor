@@ -333,22 +333,20 @@ function alertMeta(format, aircraft) {
     const priorityType =
         aircraft.calculated.is_emergency ||
         aircraft.calculated.is_military ||
-        (aircraft.calculated.landing && aircraft.calculated.landing.willIntersectGround && aircraft.calculated.is_proximate) ||
-        (aircraft.calculated.lifting && aircraft.calculated.lifting.isTakingOff && aircraft.calculated.is_proximate);
+        (aircraft.calculated.is_proximate && (aircraft.calculated.landing?.isLanding || aircraft.calculated.lifting?.isLifting));
 
-    const positionInfo = aircraft.calculated.positionRelative
-        ? ` (${aircraft.calculated.distance.toFixed(1)}km ${aircraft.calculated.positionRelative.cardinalBearing} ${formatAltitude(aircraft.calculated.altitude)})`
-        : '';
+    const { positionRelative: position, distance, altitude } = aircraft.calculated;
+    const positionInfo = position ? ` (${distance.toFixed(1)}km ${position.cardinalBearing} ${formatAltitude(altitude)})` : '';
     const aircraftInfo = aircraftType ? ` <${formatCategoryCode(aircraftType)}>` : '';
 
     const meta = {
         text: `detected`,
         warn: priorityType,
-        position: aircraft.calculated.positionRelative,
-        altitude: aircraft.calculated.altitude,
+        position,
+        altitude,
+        speed: aircraft.gs ? `${Math.round(aircraft.gs)} kts` : undefined,
         aircraftType,
     };
-    if (aircraft.gs) meta.speed = `${Math.round(aircraft.gs)} kts`;
 
     const details = { ...meta, ...format(aircraft) };
     if (details.text) details.text += `${aircraftInfo}${positionInfo}`;
