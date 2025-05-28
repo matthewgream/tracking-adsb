@@ -3,6 +3,7 @@
 
 module.exports = {
     link: 'http://adsb.local/adsbx/data/aircraft.json',
+    range_max: 300, // nm
     location: {
         address: 'SW1A 1AA',
         lat: 51.501126,

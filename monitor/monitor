@@ -366,10 +366,18 @@ function init(config) {
     console.error('config:', config);
     flightData = require('./data-flights.js');
     const airportData = require('./data-airports.js')(config.airports);
-    const airportVicinity = airportData.findNearby(config.location.lat, config.location.lon, { distance: config.filters.vicinity.distance });
-    console.error(
-        `airports: ${airportData.length()} loaded; ${airportVicinity.length} in vicinity (${config.filters.vicinity.distance}km}: ${airportVicinity.map((airport) => formatAirport(airport)).join(' ,')}`
-    );
+    const airportText = [`${airportData.length()} loaded`];
+    if (config.range_max) {
+        const airportInRange = airportData.findNearby(config.location.lat, config.location.lon, { distance: helpers.nmToKm(config.range_max) });
+        airportText.push(`${airportInRange.length} in range (${config.range_max}nm/${helpers.nmToKm(config.range_max).toFixed(0)}km)`);
+    }
+    if (config.filters.vicinity.distance) {
+        const airportVicinity = airportData.findNearby(config.location.lat, config.location.lon, { distance: config.filters.vicinity.distance });
+        airportText.push(
+            `${airportVicinity.length} in vicinity (${config.filters.vicinity.distance}km): ${airportVicinity.map((airport) => formatAirport(airport)).join(' ,')}`
+        );
+    }
+    console.error(`airports: ${airportText.join('; ')}`);
     const extra = {
         data: { airports: airportData, location: config.location },
         format: { formatStatsList, formatAltitude, formatAirport, formatVerticalAngle, formatTimePhrase },
