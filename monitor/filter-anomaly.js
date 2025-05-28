@@ -200,8 +200,7 @@ module.exports = {
         b = b.calculated.anomaly;
         return severityRank[b.highestSeverity] - severityRank[a.highestSeverity];
     },
-    getStats: (aircrafts) => {
-        const list = aircrafts.filter((a) => a.calculated.anomaly.hasAnomaly);
+    getStats: (aircrafts, list) => {
         const byType = list
             .flatMap((a) => a.calculated.anomaly.anomalies.map((t) => t.type))
             .reduce((counts, type) => ({ ...counts, [type]: (counts[type] || 0) + 1 }), {});
@@ -209,12 +208,11 @@ module.exports = {
             .map((a) => a.calculated.anomaly.highestSeverity)
             .reduce((counts, severity) => ({ ...counts, [severity]: (counts[severity] || 0) + 1 }), {});
         return {
-            ...this.extra.format.formatStatsList('aircraft-anomaly', list),
-            byType,
-            bySeverity,
             highSeverityCount: bySeverity.high || 0,
             mediumSeverityCount: bySeverity.medium || 0,
             lowSeverityCount: bySeverity.low || 0,
+            byType,
+            bySeverity,
         };
     },
     format: (aircraft) => {

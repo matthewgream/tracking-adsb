@@ -175,8 +175,7 @@ module.exports = {
         b = b.calculated.weather;
         return severityRank[b.highestSeverity] - severityRank[a.highestSeverity];
     },
-    getStats: (aircrafts) => {
-        const list = aircrafts.filter((a) => a.calculated.weather.inWeatherOperation);
+    getStats: (aircrafts, list) => {
         const byCondition = list
             .flatMap((a) => a.calculated.weather.conditions.map((c) => c.type))
             .reduce((counts, type) => ({ ...counts, [type]: (counts[type] || 0) + 1 }), {});
@@ -184,12 +183,11 @@ module.exports = {
             .map((a) => a.calculated.weather.highestSeverity)
             .reduce((counts, severity) => ({ ...counts, [severity]: (counts[severity] || 0) + 1 }), {});
         return {
-            ...this.extra.format.formatStatsList('aircraft-weather', list),
-            byCondition,
-            bySeverity,
             highSeverityCount: bySeverity.high || 0,
             mediumSeverityCount: bySeverity.medium || 0,
             lowSeverityCount: bySeverity.low || 0,
+            byCondition,
+            bySeverity,
         };
     },
     format: (aircraft) => {

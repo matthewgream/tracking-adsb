@@ -36,14 +36,12 @@ module.exports = {
         b = b.calculated.lifting;
         return b.liftingScore - a.liftingScore;
     },
-    getStats: (aircrafts) => {
-        const list = aircrafts.filter((a) => a.calculated.lifting.isLifting);
+    getStats: (aircrafts, list) => {
         const byAirport = list
             .filter((a) => a.calculated.lifting.hasKnownOrigin)
             .map((a) => a.calculated.lifting.departureAirport?.name || a.calculated.lifting.departureAirport?.icao)
             .reduce((counts, airport) => ({ ...counts, [airport]: (counts[airport] || 0) + 1 }), {});
         return {
-            ...this.extra.format.formatStatsList('aircraft-lifting', list),
             knownOriginCount: list.filter((a) => a.calculated.lifting.hasKnownOrigin).length,
             unknownOriginCount: list.filter((a) => !a.calculated.lifting.hasKnownOrigin).length,
             byAirport,

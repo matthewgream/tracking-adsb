@@ -23,11 +23,6 @@ module.exports = {
     },
     evaluate: (aircraft) => aircraft.calculated.is_emergency,
     sort: (a, b) => a.calculated.distance - b.calculated.distance,
-    getStats: (aircrafts) =>
-        this.extra.format.formatStatsList(
-            'aircraft-emergency',
-            aircrafts.filter((a) => a.calculated.is_emergency)
-        ),
     format: (aircraft) => ({
         text: `EMERGENCY ${aircraft.emergency || aircraft.squawk}`,
         warn: true,

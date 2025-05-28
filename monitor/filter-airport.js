@@ -29,19 +29,13 @@ module.exports = {
         if (b.length === 0) return -1;
         return a[0].distance - b[0].distance;
     },
-    getStats: (aircrafts) => {
-        const list = aircrafts.filter((a) => a.calculated.airports_nearby.length > 0);
-        const airports = list
+    getStats: (aircrafts, list) => {
+        const byAirport = list
             .filter((aircraft) => aircraft.calculated.airports_nearby.length > 0)
             .map((aircraft) => aircraft.calculated.airports_nearby[0].icao)
             .reduce((counts, icao) => ({ ...counts, [icao]: (counts[icao] || 0) + 1 }), {});
-        const stats = this.extra.format.formatStatsList('aircraft-airports', list);
         return {
-            ...stats,
-            description_airports: Object.entries(airports)
-                .map(([icao, count]) => `${icao}: ${count}`)
-                .join(', '),
-            airports,
+            byAirport,
         };
     },
     format: (aircraft) => {

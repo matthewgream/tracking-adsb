@@ -140,7 +140,7 @@ function formatCategoryCode(categoryCode) {
 }
 
 function formatInit() {
-    return { formatStatsList, formatAltitude, formatAirport, formatVerticalAngle, formatTimePhrase };
+    return { formatAltitude, formatAirport, formatVerticalAngle, formatTimePhrase };
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -216,6 +216,14 @@ async function filterAircraft(aircraftList) {
     });
 }
 
+function filterStats(filter, aircrafts) {
+    const list = aircrafts.filter((a) => filter.evaluate(a));
+    return {
+        ...formatStatsList(`aircraft-${filter.id}`, list),
+        ...filter.getStats?.(aircrafts, list),
+    };
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -239,7 +247,7 @@ async function obtain(flightData, config) {
         const status = {
             receivedAircraftCount: receivedAircraft.length,
             filteredAircraftCount: filteredAircraft.length,
-            filterStats: Object.fromEntries(filterModules.filter((f) => f.enabled).map((filter) => [filter.id, filter.getStats(filteredAircraft)])),
+            filterStats: Object.fromEntries(filterModules.filter((f) => f.enabled).map((filter) => [filter.id, filterStats(filter, filteredAircraft)])),
         };
         const now = Date.now();
         aircraft.forEach((a) => (a.calculated.timestamp_updated = now));

@@ -35,11 +35,6 @@ module.exports = {
         b = b.calculated.overhead;
         return (a.overheadTime || Infinity) - (b.overheadTime || Infinity);
     },
-    getStats: (aircrafts) =>
-        this.extra.format.formatStatsList(
-            'aircraft-overhead',
-            aircrafts.filter((a) => a.calculated.overhead.willIntersectOverhead)
-        ),
     format: (aircraft) => {
         const { overhead } = aircraft.calculated;
         const { overheadFuture, overheadTime, overheadAltitude, overheadSeconds, approachBearing, approachCardinal, verticalRate, verticalAngle } = overhead;
