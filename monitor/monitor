@@ -364,7 +364,7 @@ function init(config) {
     console.error('***');
     console.error('config:', config);
     flightData = require('./data-flights.js');
-    const airportData = require('./data-airports.js')({ source: config.airports.source });
+    const airportData = require('./data-airports.js')(config.airports);
     console.error('airports:', airportData.length());
     if (config.airports?.apply) airportData.apply(config.airports.apply);
     config.airports = airportData.findNearby(config.location.lat, config.location.lon, { distance: config.filters.vicinity.distance });
