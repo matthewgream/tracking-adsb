@@ -9,7 +9,6 @@ const helpers = require('./filter-helpers.js');
 module.exports = {
     id: 'overhead',
     name: 'Aircraft overhead detection',
-    enabled: true,
     priority: 3,
     config: (conf, extra) => {
         this.conf = conf;

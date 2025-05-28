@@ -414,7 +414,6 @@ const severityColors = { high: ' [HIGH]', medium: ' [MEDIUM]' };
 module.exports = {
     id: 'anomaly',
     name: 'Aircraft Operational Anomalies',
-    enabled: true,
     priority: 4,
     config: (conf, extra) => {
         this.conf = conf;

@@ -9,7 +9,6 @@ const helpers = require('./filter-helpers.js');
 module.exports = {
     id: 'vicinity',
     name: 'Aircraft vicinity detection',
-    enabled: true,
     priority: 4,
     config: (conf, extra) => {
         this.conf = conf;

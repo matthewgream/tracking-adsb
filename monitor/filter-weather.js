@@ -246,7 +246,6 @@ const severityColors = { high: ' [HIGH]', medium: ' [MEDIUM]' };
 module.exports = {
     id: 'weather',
     name: 'Aircraft Weather Operations',
-    enabled: true,
     priority: 5,
     config: (conf, extra) => {
         this.conf = conf;

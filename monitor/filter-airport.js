@@ -9,7 +9,6 @@
 module.exports = {
     id: 'airport',
     name: 'Aircraft near airport',
-    enabled: true,
     priority: 5,
     config: (conf, extra) => {
         this.conf = conf;

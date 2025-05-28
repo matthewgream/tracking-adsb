@@ -74,7 +74,6 @@ const categoryOrder = { A: 0, B: 1, C: 2, D: 3 };
 module.exports = {
     id: 'airprox',
     name: 'Aircraft proximity warning',
-    enabled: true,
     priority: 1, // High priority (same as emergency)
     config: (conf, extra) => {
         this.conf = conf;

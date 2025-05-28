@@ -9,7 +9,6 @@
 module.exports = {
     id: 'specific',
     name: 'Specific flight tracking',
-    enabled: true,
     priority: 3, // Medium priority (same as overhead)
     config: (conf, extra) => {
         this.conf = conf;

@@ -9,7 +9,6 @@
 module.exports = {
     id: 'emergency',
     name: 'Aircraft in emergency',
-    enabled: true,
     priority: 1,
     config: (conf, extra) => {
         this.conf = conf;

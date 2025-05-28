@@ -9,7 +9,6 @@
 module.exports = {
     id: 'military',
     name: 'Aircraft military',
-    enabled: true,
     priority: 6,
     config: (conf, extra) => {
         this.conf = conf;

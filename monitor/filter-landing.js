@@ -9,7 +9,6 @@ const helpers = require('./filter-helpers.js');
 module.exports = {
     id: 'landing',
     name: 'Aircraft landing detection',
-    enabled: true,
     priority: 2,
     config: (conf, extra) => {
         this.conf = conf;
