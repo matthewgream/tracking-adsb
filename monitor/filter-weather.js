@@ -184,7 +184,7 @@ module.exports = {
             .map((a) => a.calculated.weather.highestSeverity)
             .reduce((counts, severity) => ({ ...counts, [severity]: (counts[severity] || 0) + 1 }), {});
         return {
-            ...this.extra.format.getStats_List('aircraft-weather', list),
+            ...this.extra.format.formatStatsList('aircraft-weather', list),
             byCondition,
             bySeverity,
             highSeverityCount: bySeverity.high || 0,

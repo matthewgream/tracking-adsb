@@ -53,7 +53,7 @@ function formatAltitude(altitude) {
     return `${altitude.toLocaleString()} ft`;
 }
 
-function getStats_List(name, list) {
+function formatStatsList(name, list) {
     return {
         count: list.length,
         description: `${name}: ${list.length}` + (list.length > 0 ? ': ' + list.map((aircraft) => aircraft.flight).join(', ') : ''),
@@ -281,7 +281,7 @@ function track(data) {
 
 const alertsActive = {};
 
-function alerts(processedData, stats) {
+function alerts(config, processedData, stats) {
     const time = Date.now();
     const alerts = Object.keys(filterMap)
         .filter((key) => stats[key])
@@ -303,6 +303,7 @@ function alerts(processedData, stats) {
                         flight: aircraft.flight,
                         timeLast: time,
                     };
+                    if (alert.warn && config?.warn_suppress?.[key]) alert.warn = false;
                     alertsActive[id] = alert;
                     return alert;
                 })
@@ -365,11 +366,13 @@ function init(config) {
     console.error('config:', config);
     flightData = require('./data-flights.js');
     const airportData = require('./data-airports.js')(config.airports);
-    console.error('airports:', airportData.length());
-    config.airports = airportData.findNearby(config.location.lat, config.location.lon, { distance: config.filters.vicinity.distance });
+    const airportVicinity = airportData.findNearby(config.location.lat, config.location.lon, { distance: config.filters.vicinity.distance });
+    console.error(
+        `airports: ${airportData.length()} loaded; ${airportVicinity.length} in vicinity (${config.filters.vicinity.distance}km}: ${airportVicinity.map((airport) => formatAirport(airport)).join(' ,')}`
+    );
     const extra = {
         data: { airports: airportData, location: config.location },
-        format: { getStats_List, formatAltitude, formatAirport, formatVerticalAngle, formatTimePhrase },
+        format: { formatStatsList, formatAltitude, formatAirport, formatVerticalAngle, formatTimePhrase },
     };
     filterModules.forEach((module) => module.config(config.filters[module.id], extra));
     publishInit(config.publish);
@@ -382,7 +385,7 @@ async function loop(config) {
         //console.error('status: ' + JSON.stringify(status));
         if (data) {
             const processedData = track(data);
-            const alertInfo = alerts(processedData, status.filterStats);
+            const alertInfo = alerts(config.alerts, processedData, status.filterStats);
             if (alertInfo.alertsInserted.length > 0) {
                 publish(config.publish, 'alert', 'insert', alertInfo.alertsInserted);
                 display(config.display, 'alert', 'insert', alertInfo.alertsInserted);

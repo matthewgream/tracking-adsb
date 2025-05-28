@@ -209,7 +209,7 @@ module.exports = {
             .map((a) => a.calculated.anomaly.highestSeverity)
             .reduce((counts, severity) => ({ ...counts, [severity]: (counts[severity] || 0) + 1 }), {});
         return {
-            ...this.extra.format.getStats_List('aircraft-anomaly', list),
+            ...this.extra.format.formatStatsList('aircraft-anomaly', list),
             byType,
             bySeverity,
             highSeverityCount: bySeverity.high || 0,

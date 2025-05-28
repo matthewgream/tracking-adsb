@@ -22,7 +22,7 @@ module.exports = {
     evaluate: (aircraft) => aircraft.calculated.is_proximate,
     sort: (a, b) => a.calculated.distance - b.calculated.distance,
     getStats: (aircrafts) =>
-        this.extra.format.getStats_List(
+        this.extra.format.formatStatsList(
             'aircraft-vicinity',
             aircrafts.filter((a) => a.calculated.is_proximate)
         ),

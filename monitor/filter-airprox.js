@@ -108,7 +108,7 @@ module.exports = {
             .map((aircraft) => aircraft.calculated.airprox.riskCategory)
             .reduce((counts, category) => ({ ...counts, [category]: (counts[category] || 0) + 1 }), {});
         return {
-            ...this.extra.format.getStats_List('aircraft-airprox', list),
+            ...this.extra.format.formatStatsList('aircraft-airprox', list),
             categoryA: byCategory.A || 0,
             categoryB: byCategory.B || 0,
             categoryC: byCategory.C || 0,

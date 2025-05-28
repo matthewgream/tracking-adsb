@@ -36,7 +36,7 @@ module.exports = {
         return (a.overheadTime || Infinity) - (b.overheadTime || Infinity);
     },
     getStats: (aircrafts) =>
-        this.extra.format.getStats_List(
+        this.extra.format.formatStatsList(
             'aircraft-overhead',
             aircrafts.filter((a) => a.calculated.overhead.willIntersectOverhead)
         ),

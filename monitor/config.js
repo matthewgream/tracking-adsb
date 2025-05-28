@@ -3,6 +3,12 @@
 
 module.exports = {
     link: 'http://adsb.local/adsbx/data/aircraft.json',
+    location: {
+        address: 'SW1A 1AA',
+        lat: 51.501126,
+        lon: -0.14239,
+        alt: 15,
+    },
     airports: {
         source: '../airports/airports-data.js',
         apply: {
@@ -32,7 +38,9 @@ module.exports = {
             priorities: ['EGLW'],
         },
         anomaly: {},
-        weather: {},
+        weather: {
+            warn_suppress: true,
+        },
         vicinity: {
             distance: 10,
             altitude: 10000,
@@ -84,11 +92,8 @@ module.exports = {
             ],
         },
     },
-    location: {
-        address: 'SW1A 1AA',
-        lat: 51.501126,
-        lon: -0.14239,
-        alt: 15,
+    alerts: {
+        warn_suppress: { weather: true },
     },
     publish: {
         mqtt: {

@@ -81,7 +81,7 @@ module.exports = {
     evaluate: (aircraft) => aircraft.calculated.is_military,
     sort: (a, b) => a.calculated.distance - b.calculated.distance,
     getStats: (aircrafts) =>
-        this.extra.format.getStats_List(
+        this.extra.format.formatStatsList(
             'aircraft-military',
             aircrafts.filter((a) => a.calculated.is_military)
         ),

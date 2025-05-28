@@ -17,6 +17,7 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+const AIRPORT_ATZ_RADIUS_MAXIMUM = 2.5 * 1.852;
 function airportATZradius(airport) {
     if (airport.radius) return airport.radius; // km
     if (airport.runwayLengthMax) return (airport.runwayLengthMax < 1850 ? 2 : 2.5) * 1.852;
@@ -29,28 +30,18 @@ function airportATZaltitude(airport) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-class AirportsDataLinearSearch {
+class AirportsData {
     constructor(options) {
         this.data = require(options.source || 'airports-data.js');
-	if (options.apply) this._apply (options.apply);
+        if (options.apply) this._apply(options.apply);
     }
 
     length() {
         return Object.keys(this.data).length;
     }
 
-    findNearby(lat, lon, options = {}) {
-        return Object.entries(this.data)
-            .filter(([_, airport]) => airport.lat && airport.lon)
-            .map(([_, airport]) => ({ ...airport, distance: calculateDistance(lat, lon, airport.lat, airport.lon) }))
-            .filter((airport) => {
-                // XXX to check
-                if (options.distance && airport.distance <= options.distance) return true;
-                if (airport.distance > airportATZradius(airport)) return false;
-                if (options.altitude && airportATZaltitude(airport) < options.altitude) return false;
-                return true;
-            })
-            .sort((a, b) => a.distance - b.distance);
+    findNearby() {
+        throw new TypeError('Not implemented in Base Class');
     }
 
     _apply(airports) {
@@ -65,10 +56,27 @@ class AirportsDataLinearSearch {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-class AirportsDataSpatialIndexing {
+class AirportsDataLinearSearch extends AirportsData {
+    findNearby(lat, lon, options = {}) {
+        return Object.entries(this.data)
+            .filter(([_, airport]) => airport.lat && airport.lon)
+            .map(([_, airport]) => ({ ...airport, distance: calculateDistance(lat, lon, airport.lat, airport.lon) }))
+            .filter((airport) => {
+                if (options.distance) return airport.distance <= options.distance;
+                if (airport.distance > airportATZradius(airport)) return false;
+                if (options.altitude && airportATZaltitude(airport) < options.altitude) return false;
+                return true;
+            })
+            .sort((a, b) => a.distance - b.distance);
+    }
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+class AirportsDataSpatialIndexing extends AirportsData {
     constructor(options) {
-        this.data = require(options.source || 'airports-data.js');
-	if (options.apply) this._apply (options.apply);
+        super(options);
         this.spatialIndex = new Map();
         this.cacheNearby = new Map();
         this.cacheLimit = 1000;
@@ -76,10 +84,6 @@ class AirportsDataSpatialIndexing {
         this.cacheOrder = [];
         this.gridSize = 0.5; // 0.5 degree grid cells (~55km at equator)
         this.buildSpatialIndex();
-    }
-
-    length() {
-        return Object.keys(this.data).length;
     }
 
     buildSpatialIndex() {
@@ -90,7 +94,7 @@ class AirportsDataSpatialIndexing {
             if (!this.spatialIndex.has(gridKey)) this.spatialIndex.set(gridKey, []);
             this.spatialIndex.get(gridKey).push(airport);
         });
-        console.error(`airportsData: spatial index built with ${this.spatialIndex.size} grid cells`);
+        console.error(`airportsData: spatial index built with ${this.spatialIndex.size} grid cells (cache: limit=${this.cacheLimit}, trim=${this.cacheTrim})`);
     }
 
     getGridKey(lat, lon) {
@@ -118,21 +122,16 @@ class AirportsDataSpatialIndexing {
             this.cacheOrder.push(cacheKey);
             return this.cacheNearby.get(cacheKey);
         }
-        const searchRadius = options.distance || 5 * 1.852; // 5nm should cover most ATZ radii
-        const candidates = [...this.getAdjacentCells(lat, lon, searchRadius)].flatMap((gridKey) => this.spatialIndex.get(gridKey) || []);
+        const candidates = [...this.getAdjacentCells(lat, lon, options.distance || AIRPORT_ATZ_RADIUS_MAXIMUM)].flatMap(
+            (gridKey) => this.spatialIndex.get(gridKey) || []
+        );
         const results = candidates
-            .map((airport) => ({
-                ...airport,
-                distance: calculateDistance(lat, lon, airport.lat, airport.lon),
-            }))
+            .map((airport) => ({ ...airport, distance: calculateDistance(lat, lon, airport.lat, airport.lon) }))
             .filter((airport) => {
-                // XXX to check
-                if (options.distance && airport.distance <= options.distance) return true;
-                if (!options.distance && airport.distance <= airportATZradius(airport)) {
-                    if (options.altitude && airportATZaltitude(airport) < options.altitude) return false;
-                    return true;
-                }
-                return false;
+                if (options.distance) return airport.distance <= options.distance;
+                if (airport.distance > airportATZradius(airport)) return false;
+                if (options.altitude && airportATZaltitude(airport) < options.altitude) return false;
+                return true;
             })
             .sort((a, b) => a.distance - b.distance);
         const seen = new Set();
@@ -147,15 +146,8 @@ class AirportsDataSpatialIndexing {
         return uniques;
     }
 
-    _apply(airports) {
-        Object.entries(airports).forEach(([icao, airport]) => {
-            if (!this.data[icao]) this.data[icao] = { icao };
-            Object.assign(this.data[icao], airport);
-            console.error(`airportsData: override [${icao}]: ${JSON.stringify(this.data[icao])}`);
-        });
-    }
     apply(airports) {
-	this._apply (airports);
+        super._apply(airports);
         this.spatialIndex.clear();
         this.cacheNearby.clear();
         this.cacheOrder = [];

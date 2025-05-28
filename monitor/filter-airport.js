@@ -35,7 +35,7 @@ module.exports = {
             .filter((aircraft) => aircraft.calculated.airports_nearby.length > 0)
             .map((aircraft) => aircraft.calculated.airports_nearby[0].icao)
             .reduce((counts, icao) => ({ ...counts, [icao]: (counts[icao] || 0) + 1 }), {});
-        const stats = this.extra.format.getStats_List('aircraft-airports', list);
+        const stats = this.extra.format.formatStatsList('aircraft-airports', list);
         return {
             ...stats,
             description_airports: Object.entries(airports)

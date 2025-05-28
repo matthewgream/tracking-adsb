@@ -40,7 +40,7 @@ module.exports = {
     getStats: (aircrafts) => {
         const list = aircrafts.filter((a) => a.calculated.landing.isLanding);
         return {
-            ...this.extra.format.getStats_List('aircraft-landing', list),
+            ...this.extra.format.formatStatsList('aircraft-landing', list),
             landingCount: list.filter((a) => a.calculated.landing.isPossibleLanding).length,
             unknownCount: list.filter((a) => !a.calculated.landing.isPossibleLanding).length,
         };

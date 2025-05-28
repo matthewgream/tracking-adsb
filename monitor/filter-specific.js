@@ -67,7 +67,7 @@ module.exports = {
             .map((aircraft) => aircraft.calculated.specific.matches[0].category)
             .reduce((counts, category) => ({ ...counts, [category]: (counts[category] || 0) + 1 }), {});
         return {
-            ...this.extra.format.getStats_List('aircraft-specific', list),
+            ...this.extra.format.formatStatsList('aircraft-specific', list),
             byCategory,
         };
     },
