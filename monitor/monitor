@@ -205,8 +205,8 @@ function filterAircraft(aircraftList) {
 
 let preprocess_exclude;
 function fixup(config, data) {
-    if (config.flights) {
-        if (!preprocess_exclude && config.exclude) preprocess_exclude = new Set(config.exclude);
+    if (config.flights?.exclude) {
+        if (!preprocess_exclude && config.flights.exclude) preprocess_exclude = new Set(config.flights.exclude);
         if (preprocess_exclude && data.aircraft)
             data.aircraft = data.aircraft.filter((aircraft) => !aircraft.flight || !preprocess_exclude.has(aircraft.flight));
     }
