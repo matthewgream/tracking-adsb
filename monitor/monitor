@@ -216,7 +216,7 @@ function fixup(config, data) {
 async function obtain(flightData, config) {
     try {
         let data = await flightData.fetch(config.link);
-        data = fixup(config.flights, data);
+        data = fixup(config, data);
         let aircraft = preprocessAircraft(config.location.lat, config.location.lon, data.aircraft);
         aircraft = filterAircraft(aircraft);
         const status = {
