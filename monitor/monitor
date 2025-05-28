@@ -95,25 +95,50 @@ function formatTimePhrase(seconds, isFuture) {
     }
 }
 
+function formatCategoryCode(categoryCode) {
+    if (!categoryCode) return '';
+    const categoryDescriptions = {
+        A0: 'No Information',
+        A1: 'Light (<15.5k lbs)',
+        A2: 'Small (15.5-75k lbs)',
+        A3: 'Large (75-300k lbs)',
+        A4: 'High-Vortex Large (B757)',
+        A5: 'Heavy (>300k lbs)',
+        A6: 'High Performance (>5g and >400 kts)',
+        A7: 'Rotorcraft',
+        B0: 'No Information',
+        B1: 'Glider/Sailplane',
+        B2: 'Lighter-than-air',
+        B3: 'Parachutist/Skydiver',
+        B4: 'Ultralight/hang-glider/paraglider',
+        B5: 'Reserved',
+        B6: 'UAV/Drone',
+        B7: 'Space/Trans-atmospheric vehicle',
+        C0: 'No Information',
+        C1: 'Surface - Emergency Vehicle',
+        C2: 'Surface - Service Vehicle',
+        C3: 'Point Obstacle (incl. balloons)',
+        C4: 'Cluster Obstacle',
+        C5: 'Line Obstacle',
+        C6: 'Reserved',
+        C7: 'Reserved',
+        D0: 'No Information',
+        D1: 'Reserved',
+        D2: 'Reserved',
+        D3: 'Reserved',
+        D4: 'Reserved',
+        D5: 'Reserved',
+        D6: 'Reserved',
+        D7: 'Reserved',
+    };
+    const description = categoryDescriptions[categoryCode];
+    return description ? `${categoryCode}: ${description}` : `${categoryCode}`;
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const helpers = require('./filter-helpers.js');
-
-const filterModules = [
-    require('./filter-emergency.js'),
-    require('./filter-military.js'),
-    require('./filter-vicinity.js'),
-    require('./filter-airport.js'),
-    require('./filter-overhead.js'),
-    require('./filter-landing.js'),
-    require('./filter-lifting.js'),
-    require('./filter-airprox.js'),
-    require('./filter-specific.js'),
-    require('./filter-anomaly.js'),
-    require('./filter-weather.js'),
-];
-const filterMap = Object.fromEntries(filterModules.map((module) => [module.id, module]));
 
 function preprocessAircraft(lat, lon, aircraftList) {
     for (const aircraft of aircraftList) {
@@ -134,7 +159,26 @@ function preprocessAircraft(lat, lon, aircraftList) {
     return aircraftList;
 }
 
-function filterAircraft(lat, lon, aircraftList) {
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+const filterModules = [
+    require('./filter-emergency.js'),
+    require('./filter-military.js'),
+    require('./filter-vicinity.js'),
+    require('./filter-airport.js'),
+    require('./filter-overhead.js'),
+    require('./filter-landing.js'),
+    require('./filter-lifting.js'),
+    require('./filter-airprox.js'),
+    require('./filter-specific.js'),
+    require('./filter-anomaly.js'),
+    require('./filter-weather.js'),
+];
+
+const filterMap = Object.fromEntries(filterModules.map((module) => [module.id, module]));
+
+function filterAircraft(aircraftList) {
     const filters = filterModules.filter((f) => f.enabled);
     const filtered = [];
     for (const aircraft of aircraftList) {
@@ -160,18 +204,21 @@ function filterAircraft(lat, lon, aircraftList) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 let preprocess_exclude;
-function preprocess(config, data) {
-    if (!preprocess_exclude && config.exclude) preprocess_exclude = new Set(config.exclude);
-    if (preprocess_exclude && data.aircraft) data.aircraft = data.aircraft.filter((aircraft) => !aircraft.flight || !preprocess_exclude.has(aircraft.flight));
+function fixup(config, data) {
+    if (config.flights) {
+        if (!preprocess_exclude && config.exclude) preprocess_exclude = new Set(config.exclude);
+        if (preprocess_exclude && data.aircraft)
+            data.aircraft = data.aircraft.filter((aircraft) => !aircraft.flight || !preprocess_exclude.has(aircraft.flight));
+    }
     return data;
 }
 
 async function obtain(flightData, config) {
     try {
         let data = await flightData.fetch(config.link);
-        if (config.flights) data = preprocess(config.flights, data);
+        data = fixup(config.flights, data);
         let aircraft = preprocessAircraft(config.location.lat, config.location.lon, data.aircraft);
-        aircraft = filterAircraft(config.location.lat, config.location.lon, aircraft);
+        aircraft = filterAircraft(aircraft);
         const status = {
             receivedAircraftCount: data.aircraft.length,
             selectedAircraftCount: aircraft.length,
@@ -281,46 +328,6 @@ function alertStats() {
         .join(', ');
 }
 
-function getAircraftTypeDescription(categoryCode) {
-    if (!categoryCode) return '';
-    const categoryDescriptions = {
-        A0: 'No Information',
-        A1: 'Light (<15.5k lbs)',
-        A2: 'Small (15.5-75k lbs)',
-        A3: 'Large (75-300k lbs)',
-        A4: 'High-Vortex Large (B757)',
-        A5: 'Heavy (>300k lbs)',
-        A6: 'High Performance (>5g and >400 kts)',
-        A7: 'Rotorcraft',
-        B0: 'No Information',
-        B1: 'Glider/Sailplane',
-        B2: 'Lighter-than-air',
-        B3: 'Parachutist/Skydiver',
-        B4: 'Ultralight/hang-glider/paraglider',
-        B5: 'Reserved',
-        B6: 'UAV/Drone',
-        B7: 'Space/Trans-atmospheric vehicle',
-        C0: 'No Information',
-        C1: 'Surface - Emergency Vehicle',
-        C2: 'Surface - Service Vehicle',
-        C3: 'Point Obstacle (incl. balloons)',
-        C4: 'Cluster Obstacle',
-        C5: 'Line Obstacle',
-        C6: 'Reserved',
-        C7: 'Reserved',
-        D0: 'No Information',
-        D1: 'Reserved',
-        D2: 'Reserved',
-        D3: 'Reserved',
-        D4: 'Reserved',
-        D5: 'Reserved',
-        D6: 'Reserved',
-        D7: 'Reserved',
-    };
-    const description = categoryDescriptions[categoryCode];
-    return description ? `${categoryCode}: ${description}` : `<${categoryCode}>`;
-}
-
 function alertMeta(format, aircraft) {
     const aircraftType = aircraft.category || '';
     const priorityType =
@@ -332,7 +339,7 @@ function alertMeta(format, aircraft) {
     const positionInfo = aircraft.calculated.positionRelative
         ? ` (${aircraft.calculated.distance.toFixed(1)}km ${aircraft.calculated.positionRelative.cardinalBearing} ${formatAltitude(aircraft.calculated.altitude)})`
         : '';
-    const aircraftInfo = aircraftType ? ` <${getAircraftTypeDescription(aircraftType)}>` : '';
+    const aircraftInfo = aircraftType ? ` <${formatCategoryCode(aircraftType)}>` : '';
 
     const meta = {
         text: `detected`,
