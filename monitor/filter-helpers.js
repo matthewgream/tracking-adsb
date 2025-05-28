@@ -1,68 +1,98 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+function normalizeLon(lon) {
+    const normalized = ((lon + 180) % 360) - 180;
+    return normalized === -180 ? 180 : normalized;
+}
+
 function deg2rad(deg) {
+    if (typeof deg !== 'number' || !Number.isFinite(deg)) return NaN;
     return deg * (Math.PI / 180);
 }
-
 function track2rad(track) {
-    return deg2rad((450 - track) % 360);
+    if (typeof track !== 'number' || !Number.isFinite(track)) return NaN;
+    const normalizedTrack = ((track % 360) + 360) % 360;
+    return deg2rad((450 - normalizedTrack) % 360);
 }
-
 function calculateDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371;
-    const dLat = deg2rad(lat2 - lat1),
-        dLon = deg2rad(lon2 - lon1);
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    if ([lat1, lon1, lat2, lon2].some((v) => typeof v !== 'number' || !Number.isFinite(v))) return NaN;
+    if (Math.abs(lat1) > 90 || Math.abs(lat2) > 90) return NaN;
+    lon1 = normalizeLon(lon1);
+    lon2 = normalizeLon(lon2);
+    if (lat1 === lat2 && lon1 === lon2) return 0;
+    const R = 6371; // Earth's mean radius in km
+    const lat1Rad = deg2rad(lat1);
+    const lat2Rad = deg2rad(lat2);
+    const deltaLat = deg2rad(lat2 - lat1);
+    const deltaLon = deg2rad(lon2 - lon1);
+    const sinDeltaLat = Math.sin(deltaLat / 2);
+    const sinDeltaLon = Math.sin(deltaLon / 2);
+    const a = sinDeltaLat * sinDeltaLat + Math.cos(lat1Rad) * Math.cos(lat2Rad) * sinDeltaLon * sinDeltaLon;
+    const aClamped = Math.min(1, Math.max(0, a));
+    const c = 2 * Math.atan2(Math.sqrt(aClamped), Math.sqrt(1 - aClamped));
     return R * c;
 }
-
 function calculateBearing(lat1, lon1, lat2, lon2) {
-    const lat1Rad = (Math.PI * lat1) / 180,
-        lat2Rad = (Math.PI * lat2) / 180;
-    const lon1Rad = (Math.PI * lon1) / 180,
-        lon2Rad = (Math.PI * lon2) / 180;
-    const y = Math.sin(lon2Rad - lon1Rad) * Math.cos(lat2Rad),
-        x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(lon2Rad - lon1Rad);
+    if ([lat1, lon1, lat2, lon2].some((v) => typeof v !== 'number' || !Number.isFinite(v))) return NaN;
+    if (Math.abs(lat1) > 90 || Math.abs(lat2) > 90) return NaN;
+    if (Math.abs(lon1) > 180 || Math.abs(lon2) > 180) return NaN;
+    const lat1Rad = deg2rad(lat1),
+        lat2Rad = deg2rad(lat2);
+    const lon1Rad = deg2rad(lon1),
+        lon2Rad = deg2rad(lon2);
+    const dLon = lon2Rad - lon1Rad;
+    const y = Math.sin(dLon) * Math.cos(lat2Rad);
+    const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
     const bearing = (Math.atan2(y, x) * 180) / Math.PI;
     return (bearing + 360) % 360;
 }
-
 function calculateRelativePosition(refLat, refLon, targetLat, targetLon, track) {
-    const distance = calculateDistance(refLat, refLon, targetLat, targetLon),
-        bearing = calculateBearing(refLat, refLon, targetLat, targetLon);
-    const relativeTrack = ((track - bearing + 180) % 360) - 180;
+    if ([refLat, refLon, targetLat, targetLon].some((v) => typeof v !== 'number' || !Number.isFinite(v))) return undefined;
+    const distance = calculateDistance(refLat, refLon, targetLat, targetLon);
+    const bearing = calculateBearing(refLat, refLon, targetLat, targetLon);
+    if (!Number.isFinite(distance) || !Number.isFinite(bearing)) return undefined;
+    let relativeTrack, approachingStation;
+    if (typeof track === 'number' && Number.isFinite(track)) {
+        const normalizedTrack = ((track % 360) + 360) % 360;
+        relativeTrack = ((normalizedTrack - bearing + 180) % 360) - 180;
+        approachingStation = Math.abs(relativeTrack) < 90;
+    }
     return {
         distance,
         bearing,
         relativeTrack,
         cardinalBearing: bearing2Cardinal(bearing),
-        approachingStation: Math.abs(relativeTrack) < 90,
+        approachingStation,
     };
 }
-
 function calculateVerticalAngle(horizontalDistance, relativeAltitude, observerLat) {
+    if (typeof horizontalDistance !== 'number' || !Number.isFinite(horizontalDistance) || horizontalDistance < 0) return NaN;
+    if (typeof relativeAltitude !== 'number' || !Number.isFinite(relativeAltitude)) return NaN;
+    if (typeof observerLat !== 'number' || !Number.isFinite(observerLat) || Math.abs(observerLat) > 90) return NaN;
     const altitudeKm = relativeAltitude * 0.0003048; // feet to km
-    if (horizontalDistance < 0.001) return relativeAltitude > 0 ? 90 : -90; // Directly overhead or below
+    if (horizontalDistance < 0.001) return relativeAltitude > 0 ? 90 : relativeAltitude < 0 ? -90 : 0;
     let angle = Math.atan2(altitudeKm, horizontalDistance) * (180 / Math.PI);
     if (horizontalDistance > 10) {
-        // Only apply for distances > 10km
-        const latRad = Math.abs((observerLat * Math.PI) / 180);
-        const curveCorrection = horizontalDistance ** 2 / (12800 * Math.cos(latRad));
-        angle += Math.atan2(curveCorrection, horizontalDistance) * (180 / Math.PI);
+        const latRad = deg2rad(Math.abs(observerLat));
+        const cosLat = Math.max(0.001, Math.cos(latRad));
+        const curveCorrection = (horizontalDistance * horizontalDistance) / (12800 * cosLat);
+        angle -= Math.atan2(curveCorrection, horizontalDistance) * (180 / Math.PI);
     }
     return Math.max(-90, Math.min(90, angle));
 }
-
 function calculateSlantRange(horizontalDistance, relativeAltitude) {
-    const altitudeKm = relativeAltitude * 0.0003048; // feet to km
-    return Math.hypot(horizontalDistance ** 2 + altitudeKm ** 2);
+    if (typeof horizontalDistance !== 'number' || !Number.isFinite(horizontalDistance) || horizontalDistance < 0) return NaN;
+    if (typeof relativeAltitude !== 'number' || !Number.isFinite(relativeAltitude)) return NaN;
+    const altitudeKm = Math.abs(relativeAltitude) * 0.0003048; // feet to km
+    return Math.hypot(horizontalDistance, altitudeKm);
 }
-
 function bearing2Cardinal(bearing) {
+    if (typeof bearing !== 'number' || !Number.isFinite(bearing)) return '';
     const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-    return directions[Math.round(bearing / 22.5) % 16];
+    const normalizedBearing = ((bearing % 360) + 360) % 360;
+    const index = Math.round((normalizedBearing + 11.25) / 22.5) % 16;
+    return directions[index];
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -119,74 +149,364 @@ function getMinClimbRate(aircraft) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function calculateLandingTrajectory(lat, lon, rad, aircraft) {
-    if (aircraft.lat === undefined || aircraft.lon === undefined || !aircraft.track || !aircraft.gs || !aircraft.calculated.altitude || !aircraft.baro_rate)
-        return undefined;
-    if (aircraft.calculated.altitude === 0 || aircraft.calculated.altitude === 'ground') return undefined;
-    const minDescentRate = getMinDescentRate(aircraft);
-    if (aircraft.baro_rate > minDescentRate) return undefined;
-    const descentRate = Math.abs(aircraft.baro_rate);
-    const timeToGround = aircraft.calculated.altitude / descentRate,
-        groundSeconds = Math.round(timeToGround * 60);
-    const groundSpeedKmMin = (aircraft.gs * 1.852) / 60;
-    const distanceTraveled = groundSpeedKmMin * timeToGround; // km
-    const trackRad = track2rad(aircraft.track);
-    const dx = distanceTraveled * Math.cos(trackRad),
-        dy = distanceTraveled * Math.sin(trackRad);
-    const latPerKm = 1 / 111.32,
-        lonPerKm = 1 / (111.32 * Math.cos(deg2rad(aircraft.lat))); // degrees per km, adjusted
-    const groundLat = aircraft.lat + dy * latPerKm,
-        groundLon = aircraft.lon + dx * lonPerKm;
-    const groundDistance = calculateDistance(lat, lon, groundLat, groundLon);
-    if (groundDistance > rad) return undefined;
-    const groundTime = new Date(Date.now() + groundSeconds * 1000);
-    const groundPosition = calculateRelativePosition(lat, lon, groundLat, groundLon, aircraft.track);
+function validateNumber(value, min = -Infinity, max = Infinity, name = 'value') {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return { valid: false, error: `${name} is not a valid number` };
+    if (value < min || value > max) return { valid: false, error: `${name} ${value} is out of bounds [${min}, ${max}]` };
+    return { valid: true };
+}
+function validateCoordinates(lat, lon) {
+    const latCheck = validateNumber(lat, -90, 90, 'latitude');
+    if (!latCheck.valid) return latCheck;
+    const lonCheck = validateNumber(lon, -180, 180, 'longitude');
+    if (!lonCheck.valid) return lonCheck;
+    return { valid: true };
+}
 
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function projectPosition(lat, lon, distanceKm, bearingDeg) {
+    const R = 6371; // Earth radius in km
+    const latRad = deg2rad(lat);
+    const lonRad = deg2rad(lon);
+    const bearingRad = deg2rad(bearingDeg);
+    const angularDistance = distanceKm / R;
+    const latNewRad = Math.asin(Math.sin(latRad) * Math.cos(angularDistance) + Math.cos(latRad) * Math.sin(angularDistance) * Math.cos(bearingRad));
+    const lonRadNew =
+        lonRad +
+        Math.atan2(Math.sin(bearingRad) * Math.sin(angularDistance) * Math.cos(latRad), Math.cos(angularDistance) - Math.sin(latRad) * Math.sin(latNewRad));
+    let latNew = (latNewRad * 180) / Math.PI;
+    let lonNew = (((lonRadNew * 180) / Math.PI + 540) % 360) - 180;
     return {
+        lat: Math.max(-90, Math.min(90, latNew)),
+        lon: lonNew,
+    };
+}
+
+function knotsToKmPerMin(knots) {
+    return (knots * 1.852) / 60;
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function calculateLandingTrajectory(lat, lon, rad, aircraft, trajectoryData = undefined) {
+    // ===== 1. Input validation and screening =====
+
+    const observerCheck = validateCoordinates(lat, lon);
+    if (!observerCheck.valid) return { error: `Observer ${observerCheck.error}` };
+    const radiusCheck = validateNumber(rad, 0, 1000, 'radius');
+    if (!radiusCheck.valid) return { error: radiusCheck.error };
+    const required = {
+        lat: aircraft.lat,
+        lon: aircraft.lon,
+        track: aircraft.track,
+        gs: aircraft.gs,
+        altitude: aircraft.calculated?.altitude,
+        baro_rate: aircraft.baro_rate,
+    };
+    for (const [key, value] of Object.entries(required)) if (value === undefined || value === null) return { error: `Missing required field: ${key}` };
+    const aircraftCheck = validateCoordinates(aircraft.lat, aircraft.lon);
+    if (!aircraftCheck.valid) return { error: `Aircraft ${aircraftCheck.error}` };
+    const trackCheck = validateNumber(aircraft.track, 0, 360, 'track');
+    if (!trackCheck.valid) return { error: trackCheck.error };
+    const speedCheck = validateNumber(aircraft.gs, 0, 1000, 'ground speed');
+    if (!speedCheck.valid) return { error: speedCheck.error };
+    const altCheck = validateNumber(aircraft.calculated.altitude, 0, 60000, 'altitude');
+    if (!altCheck.valid) return { error: altCheck.error };
+    if (aircraft.calculated.altitude === 0) return { error: 'Aircraft already on ground' };
+    const minDescentRate = getMinDescentRate(aircraft);
+    if (aircraft.baro_rate > minDescentRate) return { error: `Not descending fast enough: ${aircraft.baro_rate} > ${minDescentRate} ft/min` };
+
+    // ===== 2. Core calculations =====
+
+    const descentRate = Math.abs(aircraft.baro_rate); // ft/min
+    const timeToGroundMinutes = aircraft.calculated.altitude / descentRate;
+    const timeToGroundSeconds = Math.round(timeToGroundMinutes * 60);
+    const groundSpeedKmMin = knotsToKmPerMin(aircraft.gs);
+    const distanceToTravel = groundSpeedKmMin * timeToGroundMinutes;
+    const projectedPosition = projectPosition(aircraft.lat, aircraft.lon, distanceToTravel, aircraft.track);
+    const groundDistance = calculateDistance(lat, lon, projectedPosition.lat, projectedPosition.lon);
+    if (groundDistance > rad)
+        return { error: `Projected landing point ${groundDistance.toFixed(1)}km exceeds radius ${rad}km`, groundDistance, projectedPosition };
+    const groundTime = new Date(Date.now() + timeToGroundSeconds * 1000);
+    const groundPosition = calculateRelativePosition(lat, lon, projectedPosition.lat, projectedPosition.lon, aircraft.track);
+
+    // ===== 3. Prepare return data =====
+
+    const result = {
         isLanding: true,
-        groundLat: Number(groundLat.toFixed(6)),
-        groundLon: Number(groundLon.toFixed(6)),
-        groundDistance,
-        groundSeconds,
+        groundLat: Number(projectedPosition.lat.toFixed(6)),
+        groundLon: Number(projectedPosition.lon.toFixed(6)),
+        groundDistance: Number(groundDistance.toFixed(3)),
+        groundSeconds: timeToGroundSeconds,
         groundTime,
         groundPosition,
+        //
+        descentRate,
+        timeToGroundMinutes: Number(timeToGroundMinutes.toFixed(2)),
+        distanceToTravel: Number(distanceToTravel.toFixed(3)),
+        currentAltitude: aircraft.calculated.altitude,
+        currentSpeed: aircraft.gs,
+    };
+
+    // ===== 4. Multi-point trajectory analysis (future use) =====
+
+    if (trajectoryData && trajectoryData.positions && trajectoryData.positions.length >= 2) {
+        const trajectoryAnalysis = analyzeTrajectoryConsistency(aircraft, trajectoryData, projectedPosition);
+        result.trajectoryConfidence = trajectoryAnalysis.confidence;
+        result.trajectoryAnalysis = trajectoryAnalysis;
+    }
+
+    return result;
+}
+
+function analyzeTrajectoryConsistency(aircraft, trajectoryData, projectedPosition) {
+    const { positions } = trajectoryData;
+    const recentPositions = positions.slice(-5); // Last 5 positions
+    if (recentPositions.length < 2) return { confidence: 0.5, reason: 'Insufficient data' };
+    const bearings = [];
+    for (let i = 1; i < recentPositions.length; i++)
+        bearings.push(calculateBearing(recentPositions[i - 1].lat, recentPositions[i - 1].lon, recentPositions[i].lat, recentPositions[i].lon));
+    const avgBearing = bearings.reduce((a, b) => a + b, 0) / bearings.length;
+    const bearingVariance =
+        bearings.reduce((sum, b) => {
+            const diff = Math.abs(b - avgBearing);
+            const normalizedDiff = diff > 180 ? 360 - diff : diff;
+            return sum + normalizedDiff * normalizedDiff;
+        }, 0) / bearings.length;
+    const isTurning = bearingVariance > 100; // threshold in degrees²
+    const descentRates = trajectoryData.descentRates || [];
+    const avgDescentRate = descentRates.reduce((a, b) => a + b, 0) / descentRates.length;
+    const descentVariance = descentRates.reduce((sum, r) => sum + Math.pow(r - avgDescentRate, 2), 0) / descentRates.length;
+    let confidence = 1;
+    if (isTurning) confidence *= 0.7; // Reduce confidence if turning
+    if (descentVariance > 10000)
+        // ft/min² threshold
+        confidence *= 0.8; // Reduce confidence if descent rate varies
+    const lastPositions = recentPositions.slice(-3);
+    const projectedBearing = calculateBearing(lastPositions[0].lat, lastPositions[0].lon, projectedPosition.lat, projectedPosition.lon);
+    const currentBearing = aircraft.track;
+    const bearingDiff = Math.abs(projectedBearing - currentBearing);
+    const normalizedBearingDiff = bearingDiff > 180 ? 360 - bearingDiff : bearingDiff;
+    if (normalizedBearingDiff > 30) confidence *= 0.6; // Significant reduction if trajectory doesn't align
+    return {
+        confidence: Math.max(0, Math.min(1, confidence)),
+        isTurning,
+        bearingVariance: Number(bearingVariance.toFixed(2)),
+        descentVariance: Number(descentVariance.toFixed(2)),
+        trajectoryAlignment: normalizedBearingDiff < 30,
+        dataPoints: recentPositions.length,
     };
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function calculateLiftingTrajectory(lat, lon, aircraft) {
-    if (aircraft.lat === undefined || aircraft.lon === undefined || !aircraft.track || !aircraft.gs || !aircraft.calculated.altitude || !aircraft.baro_rate)
-        return undefined;
-    const minClimbRate = getMinClimbRate(aircraft);
-    if (aircraft.baro_rate < minClimbRate) return undefined;
-    const climbIndicator = aircraft.calculated.altitude < 3000 ? 2 : 1; // Weight lower altitudes more heavily
-    const liftingScore = ((climbIndicator * aircraft.baro_rate) / 100) * (1 - Math.min(1, aircraft.calculated.altitude / 10000));
-    if (liftingScore < 3) return undefined; // Adjust threshold as needed
-    const ascendRate = aircraft.baro_rate;
-    const timeToReachCruise = (30000 - aircraft.calculated.altitude) / ascendRate; // Time to reach 30,000 ft
-    const climbMinutes = Math.min(timeToReachCruise, 15) / 60; // Cap at 15 minutes
-    const groundSpeedKmMin = (aircraft.gs * 1.852) / 60; // Convert to km/min
-    const distanceTraveled = groundSpeedKmMin * climbMinutes; // km
-    const trackRad = track2rad(aircraft.track);
-    const dx = distanceTraveled * Math.cos(trackRad);
-    const dy = distanceTraveled * Math.sin(trackRad);
-    const latPerKm = 1 / 111.32;
-    const lonPerKm = 1 / (111.32 * Math.cos(deg2rad(aircraft.lat))); // Adjusted for latitude
-    const projectedLat = aircraft.lat + dy * latPerKm;
-    const projectedLon = aircraft.lon + dx * lonPerKm;
-    const projectedPosition = calculateRelativePosition(lat, lon, projectedLat, projectedLon, aircraft.track);
+function calculateLiftingScore(altitude, climbRate, groundSpeed) {
+    // 1. Low altitude (weight higher at lower altitudes)
+    const altitudeWeight = Math.max(0, 1 - altitude / 10000);
+    // 2. Strong climb rate relative to altitude
+    const climbWeight = altitude < 3000 ? 2 : 1;
+    // 3. Reasonable ground speed for takeoff (not too slow, not too fast)
+    const speedWeight = groundSpeed > 50 && groundSpeed < 250 ? 1.2 : 0.8;
+
+    const score = ((climbWeight * climbRate) / 100) * altitudeWeight * speedWeight;
 
     return {
+        score: Number(score.toFixed(3)),
+        factors: {
+            altitudeWeight: Number(altitudeWeight.toFixed(3)),
+            climbWeight: Number(climbWeight.toFixed(3)),
+            speedWeight: Number(speedWeight.toFixed(3)),
+            climbRate,
+            altitude,
+        },
+    };
+}
+
+function estimateDepartureTime(currentAltitude, currentClimbRate, aircraftCategory = undefined) {
+    let avgClimbRate;
+    switch (aircraftCategory) {
+        case 'A1': // Light aircraft
+            avgClimbRate = Math.min(currentClimbRate * 1.2, 700);
+            break;
+        case 'A2': // Small aircraft
+            avgClimbRate = Math.min(currentClimbRate * 1.3, 1500);
+            break;
+        case 'A3': // Large aircraft
+        case 'A4': // B757
+        case 'A5': // Heavy aircraft
+            avgClimbRate = Math.min(currentClimbRate * 1.5, 2500);
+            break;
+        case 'A7': // Rotorcraft
+            avgClimbRate = Math.min(currentClimbRate * 1.1, 500);
+            break;
+        default:
+            // Conservative estimate
+            avgClimbRate = currentClimbRate * 1.3;
+    }
+
+    const minutesSinceDeparture = currentAltitude / avgClimbRate;
+
+    return {
+        departureTime: new Date(Date.now() - minutesSinceDeparture * 60 * 1000),
+        minutesSinceDeparture: Number(minutesSinceDeparture.toFixed(2)),
+        assumedAvgClimbRate: Number(avgClimbRate.toFixed(0)),
+    };
+}
+
+function estimateCruiseAltitude(aircraftCategory, currentAltitude, climbRate) {
+    const typicalCruise = {
+        A1: 15000, // Light aircraft
+        A2: 25000, // Small aircraft
+        A3: 37000, // Large aircraft
+        A4: 39000, // B757
+        A5: 41000, // Heavy aircraft
+        A7: 5000, // Rotorcraft
+        B1: 20000, // Glider
+        B4: 5000, // Ultralight
+        B6: 10000, // UAV/Drone
+    };
+    const defaultCruise = 30000;
+    const categoryCruise = typicalCruise[aircraftCategory] || defaultCruise;
+    // Lower climb rates might indicate lower planned cruise
+    if (climbRate < 500 && currentAltitude > 5000) return Math.min(categoryCruise, currentAltitude + 5000);
+
+    return categoryCruise;
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function calculateLiftingTrajectory(lat, lon, aircraft, trajectoryData = undefined) {
+    // ===== 1. Input validation and screening =====
+
+    const observerCheck = validateCoordinates(lat, lon);
+    if (!observerCheck.valid) return { error: `Observer ${observerCheck.error}` };
+    const required = {
+        lat: aircraft.lat,
+        lon: aircraft.lon,
+        track: aircraft.track,
+        gs: aircraft.gs,
+        altitude: aircraft.calculated?.altitude,
+        baro_rate: aircraft.baro_rate,
+    };
+    for (const [key, value] of Object.entries(required)) if (value === undefined || value === null) return { error: `Missing required field: ${key}` };
+    const aircraftCheck = validateCoordinates(aircraft.lat, aircraft.lon);
+    if (!aircraftCheck.valid) return { error: `Aircraft ${aircraftCheck.error}` };
+    const validations = [
+        validateNumber(aircraft.track, 0, 360, 'track'),
+        validateNumber(aircraft.gs, 0, 1000, 'ground speed'),
+        validateNumber(aircraft.calculated.altitude, 0, 50000, 'altitude'),
+        validateNumber(aircraft.baro_rate, -10000, 10000, 'climb rate'),
+    ];
+    for (const check of validations) if (!check.valid) return { error: check.error };
+    const minClimbRate = getMinClimbRate(aircraft);
+    if (aircraft.baro_rate < minClimbRate)
+        return {
+            error: `Not climbing fast enough: ${aircraft.baro_rate} < ${minClimbRate} ft/min`,
+            climbRate: aircraft.baro_rate,
+            minClimbRate,
+        };
+
+    // ===== 2. Core calculations =====
+
+    const liftingAnalysis = calculateLiftingScore(aircraft.calculated.altitude, aircraft.baro_rate, aircraft.gs);
+    const scoreThreshold = 3; // Configurable threshold
+    if (liftingAnalysis.score < scoreThreshold)
+        return {
+            error: `Lifting score ${liftingAnalysis.score.toFixed(2)} below threshold ${scoreThreshold}`,
+            liftingAnalysis,
+        };
+    const cruiseAltitude = estimateCruiseAltitude(aircraft.category, aircraft.calculated.altitude, aircraft.baro_rate);
+    const altitudeToClimb = cruiseAltitude - aircraft.calculated.altitude;
+    const timeToReachCruiseMinutes = altitudeToClimb / aircraft.baro_rate;
+    const projectionMinutes = Math.min(timeToReachCruiseMinutes, 15);
+    const groundSpeedKmMin = knotsToKmPerMin(aircraft.gs);
+    const distanceToTravel = groundSpeedKmMin * projectionMinutes;
+    const projectedPosition = projectPosition(aircraft.lat, aircraft.lon, distanceToTravel, aircraft.track);
+    const relativePosition = calculateRelativePosition(lat, lon, projectedPosition.lat, projectedPosition.lon, aircraft.track);
+    const departureEstimate = estimateDepartureTime(aircraft.calculated.altitude, aircraft.baro_rate, aircraft.category);
+
+    // ===== 3. Prepare return data =====
+
+    const result = {
         isLifting: true,
         departureAltitude: aircraft.calculated.altitude,
         climbRate: aircraft.baro_rate,
-        liftingScore,
-        projectedLat: Number(projectedLat.toFixed(6)),
-        projectedLon: Number(projectedLon.toFixed(6)),
-        projectedPosition,
-        departureTime: new Date(Date.now() - (aircraft.calculated.altitude / aircraft.baro_rate) * 60 * 1000), // Estimate time of departure
+        currentSpeed: aircraft.gs,
+        liftingScore: liftingAnalysis.score,
+        scoreFactors: liftingAnalysis.factors,
+        projectedLat: Number(projectedPosition.lat.toFixed(6)),
+        projectedLon: Number(projectedPosition.lon.toFixed(6)),
+        projectedPosition: relativePosition,
+        projectedAltitude: Math.min(cruiseAltitude, aircraft.calculated.altitude + aircraft.baro_rate * projectionMinutes),
+        departureTime: departureEstimate.departureTime,
+        minutesSinceDeparture: departureEstimate.minutesSinceDeparture,
+        assumedAvgClimbRate: departureEstimate.assumedAvgClimbRate,
+        estimatedCruiseAltitude: cruiseAltitude,
+        projectionMinutes: Number(projectionMinutes.toFixed(2)),
+        distanceToTravel: Number(distanceToTravel.toFixed(3)),
+    };
+
+    // ===== 4. Multi-point trajectory analysis (future use) =====
+
+    if (trajectoryData && trajectoryData.positions && trajectoryData.positions.length >= 2) {
+        const trajectoryAnalysis = analyzeLiftingTrajectory(aircraft, trajectoryData, result);
+        result.trajectoryConfidence = trajectoryAnalysis.confidence;
+        result.trajectoryAnalysis = trajectoryAnalysis;
+    }
+
+    return result;
+}
+
+function analyzeLiftingTrajectory(aircraft, trajectoryData, liftingResult) {
+    const { positions, climbRates = [], altitudes = [] } = trajectoryData;
+    if (positions.length < 3) return { confidence: 0.5, reason: 'Insufficient data points' };
+    let confidence = 1;
+    const factors = {};
+    if (climbRates.length >= 3) {
+        const avgClimbRate = climbRates.reduce((a, b) => a + b, 0) / climbRates.length;
+        const climbVariance = climbRates.reduce((sum, r) => sum + Math.pow(r - avgClimbRate, 2), 0) / climbRates.length;
+        factors.climbConsistency = climbVariance < 50000; // ft/min² threshold
+        if (!factors.climbConsistency) confidence *= 0.7;
+    }
+    if (altitudes.length >= 3) {
+        let monotonic = true;
+        for (let i = 1; i < altitudes.length; i++)
+            if (altitudes[i] < altitudes[i - 1]) {
+                monotonic = false;
+                break;
+            }
+        factors.monotonicClimb = monotonic;
+        if (!monotonic) confidence *= 0.5; // Significant penalty for altitude drops
+    }
+    const recentPositions = positions.slice(-5);
+    if (recentPositions.length >= 3) {
+        const tracks = [];
+        for (let i = 1; i < recentPositions.length; i++)
+            tracks.push(calculateBearing(recentPositions[i - 1].lat, recentPositions[i - 1].lon, recentPositions[i].lat, recentPositions[i].lon));
+        const avgTrack = tracks.reduce((a, b) => a + b, 0) / tracks.length;
+        const trackVariance =
+            tracks.reduce((sum, t) => {
+                const diff = Math.abs(t - avgTrack);
+                const normalizedDiff = diff > 180 ? 360 - diff : diff;
+                return sum + normalizedDiff * normalizedDiff;
+            }, 0) / tracks.length;
+        factors.trackConsistency = trackVariance < 100; // degrees² threshold
+        if (!factors.trackConsistency) confidence *= 0.8;
+    }
+    const { estimatedDepartureLocation } = trajectoryData;
+    if (estimatedDepartureLocation) {
+        const { lat, lon } = estimatedDepartureLocation;
+        const departureDistance = calculateDistance(lat, lon, liftingResult.projectedLat, liftingResult.projectedLon);
+        factors.consistentDeparture = departureDistance < 5; // km threshold
+        if (!factors.consistentDeparture) confidence *= 0.6;
+    }
+    return {
+        confidence: Math.max(0, Math.min(1, confidence)),
+        factors,
+        dataPoints: positions.length,
+        climbRatePoints: climbRates.length,
+        altitudePoints: altitudes.length,
     };
 }
 
