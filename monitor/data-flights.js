@@ -109,7 +109,6 @@ function initialise(options) {
         return data;
     }
 
-    // eslint-disable-next-line no-redeclare
     function fetch(link) {
         return new Promise((resolve, reject) => {
             const protocol = link.startsWith('https') ? require('https') : require('http');
