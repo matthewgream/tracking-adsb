@@ -191,6 +191,8 @@ const filterModules = [
     require('./filter-anomaly.js'),
     require('./filter-weather.js'),
     require('./filter-squawks.js'),
+    require('./filter-loitering.js'),
+    // require('./filter-performance.js'), // too many false positives
 ];
 
 let filterSet = [],

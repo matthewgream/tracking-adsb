@@ -66,6 +66,7 @@ module.exports = {
             radius: 5 * 1.852, // Radius to search for departure airports (km)
             minClimbRate: 300, // Minimum climb rate to consider as takeoff (ft/min)
         },
+        loitering: {},
         airprox: {
             horizontalThreshold: 1, // NM
             verticalThreshold: 1000, // feet
