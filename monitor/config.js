@@ -2,13 +2,16 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 module.exports = {
-    link: 'http://adsb.local/adsbx/data/aircraft.json',
-    range_max: 300, // nm
     location: {
         address: 'SW1A 1AA',
         lat: 51.501126,
         lon: -0.14239,
         alt: 15,
+    },
+    range_max: 300, // nm
+    flights: {
+        link: 'http://adsb.local/adsbx/data/aircraft.json',
+        exclude: ['TEST1234'],
     },
     airports: {
         source: '../airports/airports-data.js',
@@ -31,9 +34,6 @@ module.exports = {
     },
     further: {
         squawks: { file: 'squawk-codes-gb.js' },
-    },
-    flights: {
-        exclude: ['TEST1234'],
     },
     filters: {
         emergency: {},
@@ -101,7 +101,7 @@ module.exports = {
     alerts: {
         warn_suppress: { weather: true },
     },
-    publish: {
+    deliver: {
         mqtt: {
             enabled: true,
             server: 'mqtt://localhost:1883',
@@ -113,7 +113,6 @@ module.exports = {
             debug: false,
         },
     },
-    display: {},
 };
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------

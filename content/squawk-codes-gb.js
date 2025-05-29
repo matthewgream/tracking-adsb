@@ -1,6 +1,6 @@
 
-// squawkCodes.js - UK SSR Code Allocation Plan
-// Generated from UK AIP ENR 1.6
+// UK AIP ENR 1.6
+// https://nats-uk.ead-it.com/cms-nats/opencms/en/Publications/AIP/
 
 module.exports = {
   codes: [

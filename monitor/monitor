@@ -5,8 +5,6 @@
 
 const { hostname } = require('os');
 const configFile = process.argv[2] || `./config.${hostname}.js`;
-const config = require(configFile);
-console.error(`config: ${configFile}`);
 
 const CACHE_EXPIRY_TIME = 5 * 60;
 const ALERT_EXPIRY_TIME = 5 * 60;
@@ -17,23 +15,24 @@ async function do_yield() {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// output mechanisms for publishing and displaying alerts: noting they arrive as inserts or removes
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 let mqtt;
-function publishInit(config) {
-    if (!mqtt && config.mqtt && config.mqtt.enabled) {
-        mqtt = require('./function-mqtt.js')(config.mqtt);
-        mqtt.begin((topic, message) => console.log(`mqtt: received: '${topic}' => '${message}' [IGNORED]`));
-    }
-}
-function publishTerm() {
-    if (mqtt) mqtt.end();
-}
+
 function publish(config, type, sub, data) {
     if (mqtt && config.mqtt.publishTopics?.[type]) data.forEach((item) => mqtt.publish([config.mqtt.publishTopics[type], sub].join('/'), item));
 }
 
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+function publishInit(config) {
+    if (!mqtt && config.mqtt && config.mqtt.enabled) {
+        mqtt = require('./function-mqtt.js')(config.mqtt);
+        mqtt.begin((topic, message) => console.log(`mqtt: received: '${topic}' => '${message}' [IGNORED]`));
+        if (mqtt) process.on('exit', () => mqtt?.end());
+    }
+    return {};
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 function display(config, type, sub, data) {
@@ -45,6 +44,24 @@ function display(config, type, sub, data) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function deliver(config, alerts) {
+    if (alerts.alertsInserted.length > 0) {
+        publish(config, 'alert', 'insert', alerts.alertsInserted);
+        display(config, 'alert', 'insert', alerts.alertsInserted);
+    }
+    if (alerts.alertsRemoved.length > 0) {
+        publish(config, 'alert', 'remove', alerts.alertsRemoved);
+        display(config, 'alert', 'remove', alerts.alertsRemoved);
+    }
+}
+
+function deliverInit(config) {
+    return publishInit(config);
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// formatting functions for rendering and display
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 function formatSecondsNicely(s) {
@@ -151,12 +168,51 @@ function formatInit() {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// initialise flights, airports and further data modules and providers
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function flightsInit(config) {
+    return require('./data-flights.js')({ debug: Boolean(config.debug) });
+}
+
+function airportsInit(config, { location, range, vicinity }) {
+    const airports = require('./data-airports.js')(config);
+    const airportText = [`${airports.length()} loaded`];
+    if (range) {
+        const ar = airports.findNearby(location.lat, location.lon, { distance: helpers.nmToKm(range) });
+        airportText.push(`${ar.length} in range (${range}nm/${helpers.nmToKm(range).toFixed(0)}km)`);
+    }
+    if (vicinity) {
+        const av = airports.findNearby(location.lat, location.lon, { distance: vicinity });
+        airportText.push(`${av.length} in vicinity (${vicinity}km): ${av.map((a) => formatAirport(a)).join(' ,')}`);
+    }
+    console.error(`airports: ${airportText.join('; ')}`);
+    return airports;
+}
+
+function furtherInit(config, _data) {
+    return Object.fromEntries(
+        Object.entries(config).map(([name, options]) => {
+            let data;
+            try {
+                data = require(`./data-${name}.js`)(options, { directory: '../content' });
+                console.error(`data [${name}]: loaded: ${data.getInfo()}`);
+            } catch (e) {
+                console.error(`data [${name}]: could not be loaded:`, e);
+            }
+            return [name, data];
+        })
+    );
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// preprocess flights by calculating or fixing up data
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const helpers = require('./filter-helpers.js');
 
-function preprocessAircraft(config, aircraftList) {
-    const { lat, lon } = config.location;
+function preprocessAircraft(extra, aircraftList) {
+    const { lat, lon } = extra.location;
     for (const aircraft of aircraftList) {
         aircraft.calculated = {};
         if (!aircraft.lat && !aircraft.lon && aircraft.lastPosition?.lat && aircraft.lastPosition?.lon) {
@@ -176,6 +232,7 @@ function preprocessAircraft(config, aircraftList) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// build filters and apply them to flights, returning the results in a prioritised list
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const filterModules = [
@@ -195,17 +252,16 @@ const filterModules = [
     // require('./filter-performance.js'), // too many false positives
 ];
 
-let filterSet = [],
-    filterMap = {};
-
 function filterInit(config, extra) {
-    filterSet = filterModules.filter((filter) => config[filter.id]?.enabled == undefined || config[filter.id]?.enabled);
-    filterMap = Object.fromEntries(filterSet.map((module) => [module.id, module]));
+    const filterSet = filterModules.filter((filter) => config[filter.id]?.enabled == undefined || config[filter.id]?.enabled);
+    const filterMap = Object.fromEntries(filterSet.map((module) => [module.id, module]));
     filterSet.forEach((filter) => filter.config(config[filter.id], extra));
     console.error(`filters: ${filterModules.length} available, ${filterSet.length} enabled: ${filterSet.map((filter) => filter.id).join(', ')}`);
+    return { filterSet, filterMap };
 }
 
-async function filterAircraft(aircraftList) {
+async function filterAircraft(filters, aircraftList) {
+    const { filterSet } = filters;
     const filtered = [];
     let count = 0,
         cycle = 50;
@@ -230,52 +286,59 @@ async function filterAircraft(aircraftList) {
     });
 }
 
-function filterStats(filter, aircrafts) {
+function _filterStats(filter, aircrafts) {
     const list = aircrafts.filter((a) => filter.evaluate(a));
     return {
         ...formatStatsList(`aircraft-${filter.id}`, list),
         ...filter.getStats?.(aircrafts, list),
     };
 }
+function filterStats(filters, aircrafts) {
+    const { filterSet } = filters;
+    return Object.fromEntries(filterSet.map((filter) => [filter.id, _filterStats(filter, aircrafts)]));
+}
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// fetch flights, fix their data up by preprocessing them, and then filter them for those of interest
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 let preprocess_exclude;
 function fixup(config, data) {
-    if (config.flights?.exclude) {
-        if (!preprocess_exclude && config.flights.exclude) preprocess_exclude = new Set(config.flights.exclude);
+    if (config?.exclude) {
+        if (!preprocess_exclude && config.exclude) preprocess_exclude = new Set(config.exclude);
         if (preprocess_exclude && data.aircraft)
             data.aircraft = data.aircraft.filter((aircraft) => !aircraft.flight || !preprocess_exclude.has(aircraft.flight));
     }
     return data;
 }
 
-async function obtain(flightData, config) {
+async function obtain(config, flights, filters, extra) {
     try {
-        let data = await flightData.fetch(config.link);
+        let data = await flights.fetch(config.link);
         data = fixup(config, data);
         const receivedAircraft = data.aircraft;
-        let aircraft = preprocessAircraft(config, receivedAircraft);
-        const filteredAircraft = await filterAircraft(aircraft);
-        const status = {
+        let aircraft = preprocessAircraft(extra, receivedAircraft);
+        const filteredAircraft = await filterAircraft(filters, aircraft);
+        const stat = {
             receivedAircraftCount: receivedAircraft.length,
             filteredAircraftCount: filteredAircraft.length,
-            filterStats: Object.fromEntries(filterSet.map((filter) => [filter.id, filterStats(filter, filteredAircraft)])),
-            mappingStats: flightData.stats(),
+            filterStats: filterStats(filters, filteredAircraft),
+            mappingStats: flights.stats(),
         };
         const now = Date.now();
         aircraft.forEach((a) => (a.calculated.timestamp_updated = now));
-        return { data: { ...data, aircraft }, status, filteredAircraft };
+        return { data: { ...data, aircraft }, stat, filteredAircraft };
     } catch (e) {
         return {
-            status: {
+            stats: {
                 error: e.message,
             },
         };
     }
 }
 
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// track flights: cache them and keep their history (for some time); preserve the calcualted at the head of the history
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const flightCache = {};
@@ -320,6 +383,7 @@ function flightHistoryStats() {
     const newestAge = newestTimestamp === -Infinity ? 0 : Math.round((Date.now() - newestTimestamp) / 1000);
     return { tracked: hexes.length, entries: totalTrailEntries, avg: Math.round(avgTrailLength * 10) / 10, oldest: oldestAge, newest: newestAge };
 }
+
 function flightHistoryStatsString({ tracked, entries, avg, oldest, newest }) {
     return `tracked=${tracked}, entries=${entries}, avg=${avg}, age=${oldest}s/${newest}s`;
 }
@@ -374,11 +438,13 @@ function track(data) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// build alerts, format them according to the filters that generated them and prioritise them; insert or remove them (if they lapse or expire)
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const alertsActive = {};
 
-function alerts(config, processedData, stats) {
+function alertsBuilder(config, filters, processedData, stats) {
+    const { filterMap } = filters;
     const time = Date.now();
     const alerts = Object.keys(filterMap)
         .filter((key) => stats[key])
@@ -418,11 +484,11 @@ function alerts(config, processedData, stats) {
         alertsInserted: alerts,
         alertsRemoved,
         alertsActive: Object.values(alertsActive),
-        alertsStats: alertStats(),
+        alertsStats: alertsStats(),
     };
 }
 
-function alertStats() {
+function alertsStats() {
     return Object.entries(Object.values(alertsActive).reduce((list, alert) => ({ ...list, [alert.type]: (list[alert.type] || 0) + 1 }), {}))
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map(([key, count]) => `${key}=${count}`)
@@ -456,78 +522,22 @@ function alertMeta(format, aircraft) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// initialise the system, then run the loop and generate stats
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-let flightData, airportData, furtherData;
-
-function flightDataInit() {
-    return require('./data-flights.js')({ debug: true });
-}
-
-function airportDataInit(config, { location, range, vicinity }) {
-    const airportData = require('./data-airports.js')(config);
-    const airportText = [`${airportData.length()} loaded`];
-    if (range) {
-        const airports = airportData.findNearby(location.lat, location.lon, { distance: helpers.nmToKm(range) });
-        airportText.push(`${airports.length} in range (${range}nm/${helpers.nmToKm(range).toFixed(0)}km)`);
-    }
-    if (vicinity) {
-        const airports = airportData.findNearby(location.lat, location.lon, { distance: vicinity });
-        airportText.push(`${airports.length} in vicinity (${vicinity}km): ${airports.map((a) => formatAirport(a)).join(' ,')}`);
-    }
-    console.error(`airports: ${airportText.join('; ')}`);
-    return airportData;
-}
-
-function furtherDataInit(config, _data) {
-    return Object.fromEntries(
-        Object.entries(config).map(([name, options]) => {
-            let data;
-            try {
-                data = require(`./data-${name}.js`)(options, { directory: '../content' });
-                console.error(`data [${name}]: loaded: ${data.getInfo()}`);
-            } catch (e) {
-                console.error(`data [${name}]: could not be loaded:`, e);
-            }
-            return [name, data];
-        })
-    );
-}
-
-function init(config) {
-    console.error('***');
-    console.error('config:', config);
-    const data = { location: config.location, range: config.range_max, vicinity: config.filters.vicinity.distance };
-    flightData = flightDataInit();
-    airportData = airportDataInit(config.airports, data);
-    data.airports = airportData;
-    furtherData = furtherDataInit(config.further, data);
-    const format = formatInit();
-    filterInit(config.filters, { data: { ...data, ...furtherData }, format });
-    publishInit(config.publish);
-    process.on('exit', () => publishTerm());
-}
-
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-const started = new Date().toISOString();
-const counts = { okay: 0, error: 0, empty: 0 };
-
-function deliver(config, alerts) {
-    if (alerts.alertsInserted.length > 0) {
-        publish(config.publish, 'alert', 'insert', alerts.alertsInserted);
-        display(config.display, 'alert', 'insert', alerts.alertsInserted);
-    }
-    if (alerts.alertsRemoved.length > 0) {
-        publish(config.publish, 'alert', 'remove', alerts.alertsRemoved);
-        display(config.display, 'alert', 'remove', alerts.alertsRemoved);
-    }
-}
-function stats({ system, alerts, flights }) {
+function stats(config, { flights, alerts, system }) {
     const time = new Date();
 
     const stats = { time: time.getTime(), timeFormatted: time.toISOString() };
+    if (flights) {
+        const { receivedAircraftCount: received, filteredAircraftCount: filtered, mappingStats: mappings } = flights;
+        const cached = Object.keys(flightCache).length;
+        const stored = flightHistoryStats();
+        stats.flights = { received, filtered, cached, stored };
+        console.error(
+            `${time.toISOString()} STATUS/flights received=${received}, filtered=${filtered}, cached=${cached}, stored=(${flightHistoryStatsString(stored)}), mappings=${mappings.mapSize}${mappings.oldestEntry ? '/' + formatSecondsNicely(mappings.oldestEntry.age) : ''}`
+        );
+    }
     if (alerts) {
         const { alertsInserted, alertsRemoved, alertsActive, alertsStats } = alerts;
         stats.alerts = {
@@ -538,46 +548,64 @@ function stats({ system, alerts, flights }) {
         };
         console.error(`${time.toISOString()} STATUS/alerts new=${alertsInserted.length}, all=${alertsActive.length}: ${alertsStats}`);
     }
-    if (flights) {
-        const { receivedAircraftCount: received, filteredAircraftCount: filtered, mappingStats: mappings } = flights;
-        const cached = Object.keys(flightCache).length;
-        const stored = flightHistoryStats();
-        stats.flights = { received, filtered, cached, stored };
-        console.error(
-            `${time.toISOString()} STATUS/flights received=${received}, filtered=${filtered}, cached=${cached}, stored=(${flightHistoryStatsString(stored)}), mappings=${mappings.mapSize}${mappings.oldestEntry ? '/' + formatSecondsNicely(mappings.oldestEntry.age) : ''}`
-        );
-    }
     if (system) {
         stats.system = system;
+        const { okay, error, empty } = system.counts;
+        console.error(`${time.toISOString()} STATUS/system okay=${okay}, error=${error}, empty=${empty}, started=${system.started}`);
     }
-    if (Object.keys(stats).length > 0) publish(config.publish, 'state', 'loop', [stats]);
+    if (Object.keys(stats).length > 0) publish(config.deliver, 'state', 'loop', [stats]);
 }
 
-async function loop(config) {
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+async function loop(config, system) {
     try {
-        const { data, status, filteredAircraft } = await obtain(flightData, config);
+        const { data, stat, filteredAircraft } = await obtain(config.flights, system.flights, system.filters, { location: config.location });
         if (data) {
             const processedData = track(data);
             const filteredData = { ...processedData, aircraft: filteredAircraft };
-            const alertInfo = alerts(config.alerts, filteredData, status.filterStats);
-            deliver(config, alertInfo);
-            counts.okay++;
-            stats({ alerts: alertInfo, flights: status, system: { started, counts } });
+            const alerts = alertsBuilder(config.alerts, system.filters, filteredData, stat.filterStats);
+            deliver(config.deliver, alerts);
+            system.stats.counts.okay++;
+            stats(config, { alerts, flights: stat, system: system.stats });
         } else {
-            counts.empty++;
+            system.stats.counts.empty++;
             console.error(`loop: no data received:`, status.error || 'no error details');
         }
     } catch (e) {
-        counts.error++;
+        system.stats.counts.error++;
         console.error(`loop: exception:`, e);
     }
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-init(config);
-loop(config);
-setInterval(() => loop(config), CYCLE_SCAN_TIME * 1000);
+function init(config) {
+    const data = { location: config.location, range: config.range_max, vicinity: config.filters.vicinity.distance };
+    const flights = flightsInit(config.flights);
+    const airports = airportsInit(config.airports, data);
+    const further = furtherInit(config.further, data);
+    const format = formatInit();
+    const filters = filterInit(config.filters, { data: { ...data, ...further, airports }, format });
+    const deliver = deliverInit(config.deliver);
+    return { flights, airports, further, format, filters, deliver };
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// main
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+console.error('***');
+console.error(`config: ${configFile}`);
+const config = require(configFile);
+console.error('config:', config);
+const system = init(config);
+system.stats = {
+    started: new Date().toISOString(),
+    counts: { okay: 0, error: 0, empty: 0 },
+};
+loop(config, system);
+setInterval(() => loop(config, system), CYCLE_SCAN_TIME * 1000);
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
