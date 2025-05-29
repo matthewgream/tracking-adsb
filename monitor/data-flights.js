@@ -1,12 +1,27 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+// Experimental: Map to track hex codes and their associated flight numbers
+const hexToFlightMap = new Map();
 function fixup(data) {
+    let substitutionCount = 0;
     data.aircraft?.forEach((aircraft) => {
-        aircraft.flight = aircraft.flight ? aircraft.flight.trim() : `[${aircraft.hex}]`;
+        if (aircraft.flight) aircraft.flight = aircraft.flight.trim();
+        if (aircraft.flight && aircraft.hex) hexToFlightMap.set(aircraft.hex, aircraft.flight.trim());
+        if (!aircraft.flight) {
+            if (aircraft.hex && hexToFlightMap.has(aircraft.hex)) {
+                aircraft.flight = hexToFlightMap.get(aircraft.hex);
+                substitutionCount++;
+            } else aircraft.flight = `[${aircraft.hex}]`;
+        }
     });
+    if (substitutionCount > 0)
+        console.log(`[EXPERIMENTAL] Substituted flight codes for ${substitutionCount} aircraft using hex-to-flight mapping (map size: ${hexToFlightMap.size})`);
     return data;
 }
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // eslint-disable-next-line no-redeclare
 function fetch(link) {
