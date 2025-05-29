@@ -183,6 +183,7 @@ const filterModules = [
     require('./filter-specific.js'),
     require('./filter-anomaly.js'),
     require('./filter-weather.js'),
+    require('./filter-squawks.js'),
 ];
 
 let filterSet = [],
@@ -447,7 +448,7 @@ function alertMeta(format, aircraft) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-let flightData, airportData;
+let flightData, airportData, furtherData;
 
 function flightDataInit() {
     return require('./data-flights.js');
@@ -468,6 +469,21 @@ function airportDataInit(config, { location, range, vicinity }) {
     return airportData;
 }
 
+function furtherDataInit(config, _data) {
+    return Object.fromEntries(
+        Object.entries(config).map(([name, options]) => {
+            let data;
+            try {
+                data = require(`./data-${name}.js`)(options, { directory: '../content' });
+                console.error(`data [${name}]: loaded: ${data.getInfo()}`);
+            } catch (e) {
+                console.error(`data [${name}]: could not be loaded:`, e);
+            }
+            return [name, data];
+        })
+    );
+}
+
 function init(config) {
     console.error('***');
     console.error('config:', config);
@@ -475,8 +491,9 @@ function init(config) {
     flightData = flightDataInit();
     airportData = airportDataInit(config.airports, data);
     data.airports = airportData;
+    furtherData = furtherDataInit(config.further, data);
     const format = formatInit();
-    filterInit(config.filters, { data, format });
+    filterInit(config.filters, { data: { ...data, ...furtherData }, format });
     publishInit(config.publish);
     process.on('exit', () => publishTerm());
 }

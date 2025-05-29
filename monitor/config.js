@@ -29,6 +29,9 @@ module.exports = {
             },
         },
     },
+    further: {
+        squawks: { file: 'squawk-codes-gb.js' },
+    },
     flights: {
         exclude: ['TEST1234'],
     },
@@ -38,6 +41,7 @@ module.exports = {
         airport: {
             priorities: ['EGLW'],
         },
+        squawks: {},
         anomaly: {},
         weather: {
             warn_suppress: true,
