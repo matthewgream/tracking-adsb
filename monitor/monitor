@@ -319,7 +319,7 @@ function flightHistoryStats() {
     return { tracked: hexes.length, entries: totalTrailEntries, avg: Math.round(avgTrailLength * 10) / 10, oldest: oldestAge, newest: newestAge };
 }
 function flightHistoryStatsString({ tracked, entries, avg, oldest, newest }) {
-    return `tracked=${tracked}, entries=${entries}, avg=${avg}, oldest=${oldest}s, newest=${newest}s`;
+    return `tracked=${tracked}, entries=${entries}, avg=${avg}, age=${oldest}s/${newest}s`;
 }
 
 function track(data) {
