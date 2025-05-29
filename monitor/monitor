@@ -47,6 +47,13 @@ function display(config, type, sub, data) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+function formatSecondsNicely(s) {
+    if (s < 60) return `${s}s`;
+    if (s < 3600) return `${Math.floor(s / 60)}m${s % 60 ? `${s % 60}s` : ''}`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h${Math.floor((s % 3600) / 60)}m${s % 60 ? `${s % 60}s` : ''}`;
+    return `${Math.floor(s / 86400)}d${Math.floor((s % 86400) / 3600)}h${Math.floor((s % 3600) / 60)}m${s % 60 ? `${s % 60}s` : ''}`;
+}
+
 function formatAltitude(altitude) {
     // Standard transition level in the UK is generally FL70 (7,000 ft)
     // London TMA uses varying transition altitudes, but 6,000 ft is common
@@ -253,6 +260,7 @@ async function obtain(flightData, config) {
             receivedAircraftCount: receivedAircraft.length,
             filteredAircraftCount: filteredAircraft.length,
             filterStats: Object.fromEntries(filterSet.map((filter) => [filter.id, filterStats(filter, filteredAircraft)])),
+            mappingStats: flightData.stats(),
         };
         const now = Date.now();
         aircraft.forEach((a) => (a.calculated.timestamp_updated = now));
@@ -451,7 +459,7 @@ function alertMeta(format, aircraft) {
 let flightData, airportData, furtherData;
 
 function flightDataInit() {
-    return require('./data-flights.js');
+    return require('./data-flights.js')({ debug: true });
 }
 
 function airportDataInit(config, { location, range, vicinity }) {
@@ -529,12 +537,12 @@ function stats({ system, alerts, flights }) {
         console.error(`${time.toISOString()} STATUS/alerts new=${alertsInserted.length}, all=${alertsActive.length}: ${alertsStats}`);
     }
     if (flights) {
-        const { receivedAircraftCount: received, filteredAircraftCount: filtered } = flights;
+        const { receivedAircraftCount: received, filteredAircraftCount: filtered, mappingStats: mappings } = flights;
         const cached = Object.keys(flightCache).length;
         const stored = flightHistoryStats();
         stats.flights = { received, filtered, cached, stored };
         console.error(
-            `${time.toISOString()} STATUS/flights received=${received}, filtered=${filtered}, cached=${cached}, stored=(${flightHistoryStatsString(stored)})`
+            `${time.toISOString()} STATUS/flights received=${received}, filtered=${filtered}, cached=${cached}, stored=(${flightHistoryStatsString(stored)}), mappings=${mappings.mapSize}${mappings.oldestEntry ? '/' + formatSecondsNicely(mappings.oldestEntry.age) : ''}`
         );
     }
     if (system) {
