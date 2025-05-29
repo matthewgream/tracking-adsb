@@ -270,6 +270,49 @@ async function obtain(flightData, config) {
 const flightCache = {};
 const flightHistory = {};
 
+function flightHistoryUpdate(hexes) {
+    const timestamp_expired = Date.now() - CACHE_EXPIRY_TIME * 1000;
+    Object.entries(flightCache)
+        .filter(([_, entry]) => timestamp_expired > entry.calculated.timestamp_updated)
+        .forEach(([hex, _]) => {
+            delete flightCache[hex];
+            delete flightHistory[hex];
+        });
+    Object.entries(flightCache)
+        .filter(([hex, _]) => !hexes.has(hex))
+        .forEach(([hex, entry]) => {
+            entry.processing.missed_updates += 1;
+            entry.processing.consecutive_misses += 1;
+            entry.processing.consecutive_appearances = 0;
+            if (flightHistory[hex]) entry.calculated.trajectoryData = flightHistory[hex].trail;
+        });
+}
+
+function flightHistoryStats() {
+    const hexes = Object.keys(flightHistory);
+    if (hexes.length === 0) return 'no aircraft';
+    let totalTrailEntries = 0,
+        oldestTimestamp = Infinity,
+        newestTimestamp = -Infinity;
+    hexes.forEach((hex) => {
+        const trail = flightHistory[hex].trail;
+        totalTrailEntries += trail.length;
+        if (trail.length > 0) {
+            const firstTimestamp = trail[0].timestamp;
+            const lastTimestamp = trail[trail.length - 1].timestamp;
+            if (firstTimestamp < oldestTimestamp) oldestTimestamp = firstTimestamp;
+            if (lastTimestamp > newestTimestamp) newestTimestamp = lastTimestamp;
+        }
+    });
+    const avgTrailLength = totalTrailEntries / hexes.length;
+    const oldestAge = oldestTimestamp === Infinity ? 0 : Math.round((Date.now() - oldestTimestamp) / 1000);
+    const newestAge = newestTimestamp === -Infinity ? 0 : Math.round((Date.now() - newestTimestamp) / 1000);
+    return { tracked: hexes.length, entries: totalTrailEntries, avg: Math.round(avgTrailLength * 10) / 10, oldest: oldestAge, newest: newestAge };
+}
+function flightHistoryStatsString({ tracked, entries, avg, oldest, newest }) {
+    return `tracked=${tracked}, entries=${entries}, avg=${avg}, oldest=${oldest}s, newest=${newest}s`;
+}
+
 function track(data) {
     if (data.aircraft?.length > 0) {
         const now = Date.now();
@@ -313,48 +356,10 @@ function track(data) {
                     },
                 };
             });
-        Object.entries(flightCache)
-            .filter(([hex, entry]) => !currentHexes.has(hex) && now - entry.calculated.timestamp_updated <= CACHE_EXPIRY_TIME * 1000)
-            .forEach(([hex, entry]) => {
-                entry.processing.missed_updates += 1;
-                entry.processing.consecutive_misses += 1;
-                entry.processing.consecutive_appearances = 0;
-                if (flightHistory[hex]) entry.calculated.trajectoryData = flightHistory[hex].trail;
-            });
-        Object.entries(flightCache)
-            .filter(([_, entry]) => now - entry.calculated.timestamp_updated > CACHE_EXPIRY_TIME * 1000)
-            .forEach(([hex, _]) => {
-                delete flightCache[hex];
-                delete flightHistory[hex];
-            });
+        flightHistoryUpdate(currentHexes);
         data = { ...data, aircraft: Object.values(flightCache) };
     }
     return data;
-}
-
-function flightHistoryStats() {
-    const hexes = Object.keys(flightHistory);
-    if (hexes.length === 0) return 'no aircraft';
-    let totalTrailEntries = 0,
-        oldestTimestamp = Infinity,
-        newestTimestamp = -Infinity;
-    hexes.forEach((hex) => {
-        const trail = flightHistory[hex].trail;
-        totalTrailEntries += trail.length;
-        if (trail.length > 0) {
-            const firstTimestamp = trail[0].timestamp;
-            const lastTimestamp = trail[trail.length - 1].timestamp;
-            if (firstTimestamp < oldestTimestamp) oldestTimestamp = firstTimestamp;
-            if (lastTimestamp > newestTimestamp) newestTimestamp = lastTimestamp;
-        }
-    });
-    const avgTrailLength = totalTrailEntries / hexes.length;
-    const oldestAge = oldestTimestamp === Infinity ? 0 : Math.round((Date.now() - oldestTimestamp) / 1000);
-    const newestAge = newestTimestamp === -Infinity ? 0 : Math.round((Date.now() - newestTimestamp) / 1000);
-    return { tracked: hexes.length, entries: totalTrailEntries, avg: Math.round(avgTrailLength * 10) / 10, oldest: oldestAge, newest: newestAge };
-}
-function flightHistoryStatsString({ tracked, entries, avg, oldest, newest }) {
-    return `tracked=${tracked}, entries=${entries}, avg=${avg}, oldest=${oldest}s, newest=${newest}s`;
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
