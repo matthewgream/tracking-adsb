@@ -140,7 +140,7 @@ function formatCategoryCode(categoryCode) {
 }
 
 function formatInit() {
-    return { formatAltitude, formatAirport, formatVerticalAngle, formatTimePhrase };
+    return { formatAltitude, formatAirport, formatVerticalAngle, formatTimePhrase, formatCategoryCode };
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------

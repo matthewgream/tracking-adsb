@@ -6,52 +6,73 @@ const path = require('path');
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-// XXX reimplement codes as a map/tree for better lookup
-
 function findSquawkByCode(squawkCodes, code) {
+    if (squawkCodes === undefined || !code) return [];
     const codeNum = Number.parseInt(code, 10);
-    if (squawkCodes === undefined || Number.isNaN(codeNum)) return [];
-    return squawkCodes.filter((entry) => entry.beginNum === codeNum || (entry.endNum !== undefined && codeNum >= entry.beginNum && codeNum <= entry.endNum));
+    if (Number.isNaN(codeNum)) return [];
+    return squawkCodes.mapOfSquawks[codeNum] || [];
 }
 
 function findSquawksByType(squawkCodes, type) {
     if (squawkCodes === undefined || !type) return [];
-    return squawkCodes.filter((entry) => entry.type === type);
+    return squawkCodes.mapOfTypes[type] || [];
 }
 
 function getAllSquawkTypes(squawkCodes) {
     if (squawkCodes === undefined) return new Set();
-    return new Set(squawkCodes.map((entry) => entry.type).filter(Boolean));
+    return new Set(Object.keys(squawkCodes.mapOfTypes));
 }
 
 function squawkDataAnalysis(squawkCodes) {
     if (squawkCodes === undefined) return 'no codes loaded';
-    const universe = {};
-    squawkCodes.forEach((entry) => {
-        for (let code = entry.beginNum; code <= (entry.endNum ?? entry.beginNum); code++) universe[code] = (universe[code] || 0) + 1;
-    });
-    const possible = 8 ** 4,
-        unique = Object.keys(universe).length,
-        actual = Object.values(universe).reduce((count, number) => count + number, 0);
-    return `possible=${possible}, unique=${unique}, actual=${actual}`;
+    const possible = 8 ** 4;
+    const unique = Object.keys(squawkCodes.mapOfSquawks).length;
+    const actual = Object.values(squawkCodes.mapOfSquawks).reduce((count, entries) => count + entries.length, 0);
+    const types = [...new Set(Object.keys(squawkCodes.mapOfTypes))];
+    return `squawks: <possible=${possible}, unique=${unique}, actual=${actual}>, types: <count=${types.length}>`;
 }
 
 function buildSquawkCodes(squawkData) {
     if (squawkData === undefined) return undefined;
-    const codes = squawkData.codes
-        .map((entry) => {
-            if (entry.begin === undefined) return undefined;
-            entry.beginNum = Number.parseInt(entry.begin, 10);
-            if (Number.isNaN(entry.beginNum)) return undefined;
-            if (entry.end) {
-                entry.endNum = Number.parseInt(entry.end, 10);
-                if (Number.isNaN(entry.endNum)) return undefined;
+
+    const mapOfSquawks = {},
+        mapOfTypes = {};
+    let badEntries = 0;
+
+    squawkData.codes.forEach((entry) => {
+        if (entry.begin === undefined) {
+            badEntries++;
+            return;
+        }
+        const beginNum = Number.parseInt(entry.begin, 10);
+        if (Number.isNaN(beginNum)) {
+            badEntries++;
+            return;
+        }
+        let endNum = beginNum;
+        if (entry.end) {
+            endNum = Number.parseInt(entry.end, 10);
+            if (Number.isNaN(endNum)) {
+                badEntries++;
+                return;
             }
-            return entry;
-        })
-        .filter(Boolean);
-    if (codes.length != squawkData.codes.length) console.error(`squawkData: trimmed out ${squawkData.codes.length - codes.length} bad entries`);
-    return codes;
+        }
+        entry.beginNum = beginNum;
+        entry.endNum = endNum;
+        for (let code = beginNum; code <= endNum; code++) {
+            if (!mapOfSquawks[code]) mapOfSquawks[code] = [];
+            mapOfSquawks[code].push(entry);
+        }
+        if (entry.type) {
+            if (!mapOfTypes[entry.type]) mapOfTypes[entry.type] = [];
+            mapOfTypes[entry.type].push(entry);
+        }
+    });
+    if (badEntries > 0) console.error(`squawkData: trimmed out ${badEntries} bad entries`);
+    return {
+        mapOfSquawks,
+        mapOfTypes,
+    };
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
