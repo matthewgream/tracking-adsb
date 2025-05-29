@@ -364,7 +364,7 @@ function flightHistoryUpdate(hexes) {
 
 function flightHistoryStats() {
     const hexes = Object.keys(flightHistory);
-    if (hexes.length === 0) return 'no aircraft';
+    if (hexes.length === 0) return { tracked: 0, entries: 0 };
     let totalTrailEntries = 0,
         oldestTimestamp = Infinity,
         newestTimestamp = -Infinity;
@@ -385,7 +385,7 @@ function flightHistoryStats() {
 }
 
 function flightHistoryStatsString({ tracked, entries, avg, oldest, newest }) {
-    return `tracked=${tracked}, entries=${entries}, avg=${avg}, age=${oldest}s/${newest}s`;
+    return `tracked=${tracked}, entries=${entries}${avg === undefined ? '' : ', avg=' + avg}${oldest === undefined || newest === undefined ? '' : ', age=' + formatSecondsNicely(oldest) + '/' + formatSecondsNicely(newest)}`;
 }
 
 function track(data) {

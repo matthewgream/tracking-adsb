@@ -64,7 +64,9 @@ function mqttBegin(r) {
         client.on('offline', () => console.warn('mqtt: offline'));
         client.on('reconnect', () => console.log('mqtt: reconnect'));
     }
-    console.log(`mqtt: loaded using 'server=${config.server},client=${config.clientId},topics=${Array.isArray(config.topics) ? config.topics.join(',') : ''}'`);
+    console.log(
+        `mqtt: loaded using 'server=${config.server}, client=${config.clientId}${Array.isArray(config.topics) && config.topics.length > 0 ? ', topics=' + config.topics.join(',') : ''}'`
+    );
 }
 
 function mqttEnd() {
