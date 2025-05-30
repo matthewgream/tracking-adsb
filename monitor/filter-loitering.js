@@ -83,14 +83,14 @@ function quickFilterCheck(config, aircraft) {
     if (!aircraft.calculated?.altitude || aircraft.calculated.altitude > config.maxAltitude) return { pass: false, reason: 'altitude' };
     // 2. Speed check
     if (!aircraft.gs || aircraft.gs < config.minGroundSpeed || aircraft.gs > config.maxGroundSpeed) return { pass: false, reason: 'speed' };
-    // 3. Category filtering
+    // 3. Must have trajectory data
+    if (!aircraft.calculated?.trajectoryData || aircraft.calculated.trajectoryData.length < config.trajectory.minDataPoints)
+        return { pass: false, reason: 'insufficient_data' };
+    // 4. Category filtering
     if (config.categoryFiltering.enabled && aircraft.category) {
         if (config.categoryFiltering.include.includes(aircraft.category)) return { pass: true, categoryBonus: 0.2 }; // Bonus for expected types
         if (config.categoryFiltering.exclude.includes(aircraft.category)) return { pass: false, reason: 'category_excluded' };
     }
-    // 4. Must have trajectory data
-    if (!aircraft.calculated?.trajectoryData || aircraft.calculated.trajectoryData.length < config.trajectory.minDataPoints)
-        return { pass: false, reason: 'insufficient_data' };
     return { pass: true };
 }
 

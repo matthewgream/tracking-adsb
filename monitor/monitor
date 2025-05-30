@@ -330,7 +330,7 @@ async function obtain(config, flights, filters, extra) {
         return { data: { ...data, aircraft }, stat, filteredAircraft };
     } catch (e) {
         return {
-            stats: {
+            stat: {
                 error: e.message,
             },
         };
@@ -570,7 +570,7 @@ async function loop(config, system) {
             stats(config, { alerts, flights: stat, system: system.stats });
         } else {
             system.stats.counts.empty++;
-            console.error(`loop: no data received:`, status.error || 'no error details');
+            console.error(`loop: no data received:`, stat?.error || 'no error details');
         }
     } catch (e) {
         system.stats.counts.error++;

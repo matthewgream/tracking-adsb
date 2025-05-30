@@ -56,12 +56,12 @@ function filterAircraft(aircraftList) {
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const flightData = require('./data-flights.js');
+const flightData = require('./data-flights.js') ();
 
 async function main() {
     try {
         const shouldFilter = process.argv.includes('--filter') || process.argv.includes('-f');
-        const data = await flightData.fetch(config.link);
+        const data = await flightData.fetch(config.flights.link);
         console.error(`Received data for ${data.aircraft.length} aircraft`);
         if (shouldFilter) {
             console.error(`Filtering for aircraft within ${config.tracking.distance}km and under ${config.tracking.altitude}ft`);

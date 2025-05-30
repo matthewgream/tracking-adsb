@@ -99,7 +99,7 @@ function initialise(options) {
                 }
             }
         });
-        if (options.debug && (replaceCount > 0 || updatedCount > 0 || cleanedCount > 0)) {
+        if (options?.debug && (replaceCount > 0 || updatedCount > 0 || cleanedCount > 0)) {
             const parts = [];
             if (replaceCount > 0) parts.push(`substituted=${replaceCount}`);
             if (updatedCount > 0) parts.push(`updated=${updatedCount}`);
