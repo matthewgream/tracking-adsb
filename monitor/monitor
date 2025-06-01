@@ -27,7 +27,7 @@ function publish(config, type, sub, data) {
 function publishInit(config) {
     if (!mqtt && config.mqtt && config.mqtt.enabled) {
         mqtt = require('./function-mqtt.js')(config.mqtt);
-        mqtt.begin((topic, message) => console.log(`mqtt: received: '${topic}' => '${message}' [IGNORED]`));
+        mqtt.begin((topic, message) => console.error(`mqtt: received: '${topic}' => '${message}' [IGNORED]`));
         if (mqtt) process.on('exit', () => mqtt?.end());
     }
     return {};
@@ -38,9 +38,9 @@ function publishInit(config) {
 function display(config, type, sub, data) {
     if (sub == 'insert')
         data.forEach((item) =>
-            console.error(`${item.timeFormatted} ${type.toUpperCase()}/${sub} [${item.type}] ${item.flight} ${item.text}${item.warn ? ' [NOTICE]' : ''}`)
+            console.log(`${item.timeFormatted} ${type.toUpperCase()}/${sub} [${item.type}] ${item.flight} ${item.text}${item.warn ? ' [NOTICE]' : ''}`)
         );
-    //else if (sub == 'remove') data.forEach((item) => console.error(`${item} ${type.toUpperCase()}/${sub}`));
+    //else if (sub == 'remove') data.forEach((item) => console.log(`${item} ${type.toUpperCase()}/${sub}`));
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -369,7 +369,7 @@ function flightHistoryStats() {
         oldestTimestamp = Infinity,
         newestTimestamp = -Infinity;
     hexes.forEach((hex) => {
-        const trail = flightHistory[hex].trail;
+        const { trail } = flightHistory[hex];
         totalTrailEntries += trail.length;
         if (trail.length > 0) {
             const firstTimestamp = trail[0].timestamp;
@@ -534,7 +534,7 @@ function stats(config, { flights, alerts, system }) {
         const cached = Object.keys(flightCache).length;
         const stored = flightHistoryStats();
         stats.flights = { received, filtered, cached, stored };
-        console.error(
+        console.log(
             `${time.toISOString()} STATUS/flights received=${received}, filtered=${filtered}, cached=${cached}, stored=(${flightHistoryStatsString(stored)}), mappings=${mappings.mapSize}${mappings.oldestEntry ? '/' + formatSecondsNicely(mappings.oldestEntry.age) : ''}`
         );
     }
@@ -546,12 +546,12 @@ function stats(config, { flights, alerts, system }) {
             active: alertsActive.length,
             byType: Object.values(alertsActive).reduce((list, alert) => ({ ...list, [alert.type]: (list[alert.type] || 0) + 1 }), {}),
         };
-        console.error(`${time.toISOString()} STATUS/alerts new=${alertsInserted.length}, all=${alertsActive.length}: ${alertsStats}`);
+        console.log(`${time.toISOString()} STATUS/alerts new=${alertsInserted.length}, all=${alertsActive.length}: ${alertsStats}`);
     }
     if (system) {
         stats.system = system;
         const { okay, error, empty } = system.counts;
-        console.error(`${time.toISOString()} STATUS/system okay=${okay}, error=${error}, empty=${empty}, started=${system.started}`);
+        console.log(`${time.toISOString()} STATUS/system okay=${okay}, error=${error}, empty=${empty}, started=${system.started}`);
     }
     if (Object.keys(stats).length > 0) publish(config.deliver, 'state', 'loop', [stats]);
 }

@@ -367,7 +367,7 @@ function analyzeTrajectoryConsistency(aircraft, trajectoryData, projectedPositio
     const isTurning = bearingVariance > 100; // threshold in degrees²
     const descentRates = trajectoryData.descentRates || [];
     const avgDescentRate = descentRates.reduce((a, b) => a + b, 0) / descentRates.length;
-    const descentVariance = descentRates.reduce((sum, r) => sum + Math.pow(r - avgDescentRate, 2), 0) / descentRates.length;
+    const descentVariance = descentRates.reduce((sum, r) => sum + (r - avgDescentRate) ** 2, 0) / descentRates.length;
     let confidence = 1;
     if (isTurning) confidence *= 0.7; // Reduce confidence if turning
     if (descentVariance > 10000) confidence *= 0.8; // Reduce confidence if descent rate varies (ft/min² threshold)
@@ -498,7 +498,7 @@ function analyzeLiftingTrajectory(aircraft, trajectoryData, liftingResult) {
     const factors = {};
     if (climbRates.length >= 3) {
         const avgClimbRate = climbRates.reduce((a, b) => a + b, 0) / climbRates.length;
-        const climbVariance = climbRates.reduce((sum, r) => sum + Math.pow(r - avgClimbRate, 2), 0) / climbRates.length;
+        const climbVariance = climbRates.reduce((sum, r) => sum + (r - avgClimbRate) ** 2, 0) / climbRates.length;
         factors.climbConsistency = climbVariance < 50000; // ft/min² threshold
         if (!factors.climbConsistency) confidence *= 0.7;
     }

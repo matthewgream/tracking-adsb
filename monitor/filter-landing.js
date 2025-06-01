@@ -36,12 +36,10 @@ module.exports = {
         if (!aIsUnexpected && bIsUnexpected) return 1;
         return a.groundSeconds - b.groundSeconds;
     },
-    getStats: (aircrafts, list) => {
-        return {
-            landingCount: list.filter((a) => a.calculated.landing.isPossibleLanding).length,
-            unknownCount: list.filter((a) => !a.calculated.landing.isPossibleLanding).length,
-        };
-    },
+    getStats: (aircrafts, list) => ({
+        landingCount: list.filter((a) => a.calculated.landing.isPossibleLanding).length,
+        unknownCount: list.filter((a) => !a.calculated.landing.isPossibleLanding).length,
+    }),
     format: (aircraft) => {
         const { landing } = aircraft.calculated;
         if (!landing.isPossibleLanding)

@@ -104,7 +104,7 @@ function initialise(options) {
             if (replaceCount > 0) parts.push(`substituted=${replaceCount}`);
             if (updatedCount > 0) parts.push(`updated=${updatedCount}`);
             if (cleanedCount > 0) parts.push(`cleaned=${cleanedCount}`);
-            console.log(`[EXPERIMENTAL] hex/flight mapping: ${parts.join(', ')} (map size: ${hexToFlightMap.size})`);
+            console.error(`hex/flight mapping: ${parts.join(', ')} (map size: ${hexToFlightMap.size})`);
         }
         return data;
     }

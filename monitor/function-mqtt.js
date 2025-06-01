@@ -20,7 +20,7 @@ function mqttPublish(topic, message, options = {}) {
             const payload = typeof message === 'object' ? JSON.stringify(message) : message;
             client.publish(topic, payload, options, (err) => {
                 if (err) console.error(`mqtt: publish to '${topic}', error:`, err);
-                else if (config.debug) console.log(`mqtt: published to '${topic}'`);
+                else if (config.debug) console.error(`mqtt: published to '${topic}'`);
             });
             return true;
         } catch (e) {
@@ -35,7 +35,7 @@ function mqttSubscribe() {
             config.topics.forEach((topic) =>
                 client.subscribe(topic, (err) => {
                     if (err) console.error(`mqtt: subscribe to '${topic}', error:`, err);
-                    else console.log(`mqtt: subscribe to '${topic}', succeeded`);
+                    else console.error(`mqtt: subscribe to '${topic}', succeeded`);
                 })
             );
     }
@@ -50,23 +50,22 @@ function mqttBegin(r) {
         options.password = config.password;
     }
     receiver = r;
-    console.log(`mqtt: connecting to '${config.server}'`);
+    console.error(`mqtt: connecting to '${config.server}'`);
     client = mqtt.connect(config.server, options);
     if (client) {
         client.on('connect', () => {
-            console.log('mqtt: connected');
+            console.error('mqtt: connected');
             mqttSubscribe();
         });
         client.on('message', (topic, message) => {
             mqttReceive(topic, message);
         });
         client.on('error', (err) => console.error('mqtt: error:', err));
-        client.on('offline', () => console.warn('mqtt: offline'));
-        client.on('reconnect', () => console.log('mqtt: reconnect'));
+        client.on('offline', () => console.error('mqtt: offline'));
+        client.on('reconnect', () => console.error('mqtt: reconnect'));
     }
-    console.log(
-        `mqtt: loaded using 'server=${config.server}, client=${config.clientId}${Array.isArray(config.topics) && config.topics.length > 0 ? ', topics=' + config.topics.join(',') : ''}'`
-    );
+    const topicsFormatted = Array.isArray(config.topics) && config.topics.length > 0 ? config.topics.join(',') : '';
+    console.error(`mqtt: loaded using 'server=${config.server}, client=${config.clientId}${topicsFormatted ? ', topics=' + topicsFormatted : ''}'`);
 }
 
 function mqttEnd() {

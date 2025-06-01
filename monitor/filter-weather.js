@@ -146,17 +146,17 @@ function detectTurbulence(config, verticalRates) {
         // Calculate standard deviation
         const avg = verticalRates.reduce((sum, rate) => sum + rate, 0) / verticalRates.length;
         const variance = verticalRates.reduce((sum, rate) => sum + (rate - avg) ** 2, 0) / verticalRates.length;
-        const stdDev = Math.sqrt(variance);
+        const standardDeviation = Math.sqrt(variance);
         // Find severity band
-        const severityBand = config.severityBands.find((band) => stdDev <= band.maxStdDev);
+        const severityBand = config.severityBands.find((band) => standardDeviation <= band.maxStdDev);
         if (severityBand)
             return {
                 type: 'turbulence',
                 severity: severityBand.severity,
-                details: `${severityBand.description}: vertical rate σ=${stdDev.toFixed(0)} ft/min`,
+                details: `${severityBand.description}: vertical rate σ=${standardDeviation.toFixed(0)} ft/min`,
                 debug: {
-                    standardDeviation: stdDev,
-                    variation: variation,
+                    standardDeviation,
+                    variation,
                     dataPoints: verticalRates.length,
                 },
             };
@@ -204,7 +204,7 @@ function detectTemperatureInversion(config, aircraft) {
             details: `${tempDeviation > 0 ? '+' : ''}${tempDeviation.toFixed(0)}°C from ISA`,
             debug: {
                 actualTemp: aircraft.oat,
-                expectedTemp: expectedTemp.toFixed(1),
+                expectedTemp,
                 altitude: aircraft.calculated.altitude,
             },
         };

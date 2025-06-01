@@ -749,9 +749,8 @@ module.exports = {
             const [primary] = squawk.anomalies,
                 count = squawk.anomalies.length;
             const suffix = count > 1 ? ` (+${count - 1} more)` : '';
-            const description = primary.description;
             return {
-                text: `squawk ${squawk.code} anomaly: ${description}${suffix}`,
+                text: `squawk ${squawk.code} anomaly: ${primary.description}${suffix}`,
                 warn: squawk.highestSeverity === 'high',
                 squawkInfo: {
                     code: squawk.code,

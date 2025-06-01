@@ -56,7 +56,7 @@ function filterAircraft(aircraftList) {
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const flightData = require('./data-flights.js') ();
+const flightData = require('./data-flights.js')();
 
 async function main() {
     try {

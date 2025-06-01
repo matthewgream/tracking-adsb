@@ -205,14 +205,14 @@ function detectHoveringPattern(positions, config, aircraftCategory) {
         speedVariation = maxSpeed - minSpeed;
     const centerLat = lats.reduce((a, b) => a + b, 0) / lats.length,
         centerLon = lons.reduce((a, b) => a + b, 0) / lons.length;
-    const maxDistance = Math.max(...positions.map((p) => helpers.calculateDistance(centerLat, centerLon, p.lat, p.lon)));
+    const positionVariation = Math.max(...positions.map((p) => helpers.calculateDistance(centerLat, centerLon, p.lat, p.lon)));
     const detected =
-        speedVariation <= config.patterns.hovering.maxSpeedVariation && maxDistance <= config.patterns.hovering.maxPositionVariation && avgSpeed < 50; // Hovering typically < 50 kts
+        speedVariation <= config.patterns.hovering.maxSpeedVariation && positionVariation <= config.patterns.hovering.maxPositionVariation && avgSpeed < 50; // Hovering typically < 50 kts
     return {
         detected,
         avgSpeed,
         speedVariation,
-        positionVariation: maxDistance,
+        positionVariation,
         confidence: detected ? 0.8 : 0,
     };
 }
