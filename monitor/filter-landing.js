@@ -30,10 +30,10 @@ module.exports = {
     sort: (a, b) => {
         const a_ = a.calculated.landing,
             b_ = b.calculated.landing;
-	if (a_.isLanding && !b_.isLanding) return -1;
-	if (!a_.isLanding && b_.isLanding) return 1;
-        if (!a_.isPossibleLanding && b_.isPossibleLanding) return -1;
-        if (a_.isPossibleLanding && !b_.isPossibleLanding) return 1;
+        if (!a_.isLanding) return 1;
+        if (!b_.isLanding) return -1;
+        //
+        if (a_.isPossibleLanding != b_.isPossibleLanding) return a_.isPossibleLanding && !b_.isPossibleLanding ? 1 : -1;
         return a_.groundSeconds - b_.groundSeconds;
     },
     getStats: (aircrafts, list) => ({

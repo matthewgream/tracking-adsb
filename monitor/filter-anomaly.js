@@ -186,7 +186,6 @@ const RAPID_SPEED_CHANGE_CONFIG = {
 function detectHighSpeedLowAltitude(config, aircraft) {
     if (!config.enabled) return undefined;
     if (!aircraft.gs || !aircraft.calculated?.altitude) return undefined;
-    // Find matching threshold
     const threshold = config.thresholds.find((t) => aircraft.calculated.altitude <= t.maxAltitude && aircraft.gs > t.maxSpeed);
     if (threshold)
         return {
@@ -205,7 +204,6 @@ function detectHighSpeedLowAltitude(config, aircraft) {
 function detectLowSpeedHighAltitude(config, aircraft) {
     if (!config.enabled) return undefined;
     if (!aircraft.gs || !aircraft.calculated?.altitude) return undefined;
-    // Find matching threshold
     const threshold = config.thresholds.find((t) => aircraft.calculated.altitude >= t.minAltitude && aircraft.gs < t.minSpeed);
     if (threshold)
         return {
@@ -224,9 +222,9 @@ function detectLowSpeedHighAltitude(config, aircraft) {
 function detectTemperatureAnomaly(config, aircraft) {
     if (!config.enabled) return undefined;
     if (aircraft.oat === undefined || aircraft.tat === undefined || !aircraft.mach) return undefined;
-    const expectedDiff = aircraft.mach * aircraft.mach * config.machTempCoefficient;
-    const actualDiff = aircraft.tat - aircraft.oat;
-    const deviation = Math.abs(actualDiff - expectedDiff);
+    const expectedDiff = aircraft.mach * aircraft.mach * config.machTempCoefficient,
+        actualDiff = aircraft.tat - aircraft.oat,
+        deviation = Math.abs(actualDiff - expectedDiff);
     if (deviation > config.deviationThreshold)
         return {
             type: 'temperature-anomaly',
@@ -244,20 +242,16 @@ function detectTemperatureAnomaly(config, aircraft) {
 function detectAltitudeOscillation(config, altitudes) {
     if (!config.enabled) return undefined;
     if (!altitudes || altitudes.length < config.minimumDataPoints) return undefined;
-    // Calculate direction changes
     const altChangeDirections = [];
     for (let i = 1; i < altitudes.length; i++) {
         const change = altitudes[i] - altitudes[i - 1];
         if (Math.abs(change) > config.minimumAltitudeChange) altChangeDirections.push(change > 0 ? 'up' : 'down');
     }
-    // Count direction changes
     let directionChanges = 0;
     for (let i = 1; i < altChangeDirections.length; i++) if (altChangeDirections[i] !== altChangeDirections[i - 1]) directionChanges++;
-    // Calculate altitude range
     const maxAlt = Math.max(...altitudes),
         minAlt = Math.min(...altitudes),
         altitudeRange = maxAlt - minAlt;
-    // Find matching threshold
     const threshold = config.thresholds.find((t) => directionChanges >= t.minDirectionChanges && altitudeRange >= t.minAltitudeRange);
     if (threshold)
         return {
@@ -276,13 +270,10 @@ function detectAltitudeOscillation(config, altitudes) {
 function detectAltitudeDeviation(config, aircraft, recentAltitudes) {
     if (!config.enabled) return undefined;
     if (!aircraft.nav_altitude_mcp || !aircraft.calculated?.altitude || !recentAltitudes || recentAltitudes.length < config.minimumDataPoints) return undefined;
-    const assignedAltitude = aircraft.nav_altitude_mcp;
-    const currentAltitude = aircraft.calculated.altitude;
-    // Check if aircraft was previously at assigned altitude
-    const wasAtAssigned = recentAltitudes.some((alt) => Math.abs(alt - assignedAltitude) < config.stabilityThreshold);
-    if (!wasAtAssigned) return undefined;
+    const assignedAltitude = aircraft.nav_altitude_mcp,
+        currentAltitude = aircraft.calculated.altitude;
+    if (!recentAltitudes.some((alt) => Math.abs(alt - assignedAltitude) < config.stabilityThreshold)) return undefined;
     const deviation = Math.abs(currentAltitude - assignedAltitude);
-    // Find matching deviation band
     const deviationBand = config.deviationBands.find((band) => deviation >= band.minDeviation && deviation < band.maxDeviation);
     if (deviationBand)
         return {
@@ -302,7 +293,6 @@ function detectExtremeVerticalRate(config, aircraft) {
     if (!config.enabled) return undefined;
     if (!aircraft.baro_rate) return undefined;
     const absRate = Math.abs(aircraft.baro_rate);
-    // Find matching threshold
     const threshold = config.thresholds.find((t) => absRate >= t.minRate && absRate < t.maxRate);
     if (threshold)
         return {
@@ -320,10 +310,9 @@ function detectExtremeVerticalRate(config, aircraft) {
 function detectRapidVerticalRateChange(config, aircraft, verticalRates) {
     if (!config.enabled) return undefined;
     if (!aircraft.baro_rate || !verticalRates || verticalRates.length < config.minimumDataPoints) return undefined;
-    const currentRate = verticalRates[verticalRates.length - 1];
-    const previousRate = verticalRates[verticalRates.length - 1 - config.lookbackIndex];
-    const change = Math.abs(currentRate - previousRate);
-    // Find matching threshold
+    const currentRate = verticalRates[verticalRates.length - 1],
+        previousRate = verticalRates[verticalRates.length - 1 - config.lookbackIndex],
+        change = Math.abs(currentRate - previousRate);
     const threshold = config.thresholds.find((t) => change >= t.minChange && change < t.maxChange);
     if (threshold) {
         let { severity } = threshold;
@@ -347,10 +336,10 @@ function detectRapidVerticalRateChange(config, aircraft, verticalRates) {
 function detectRapidSpeedChange(config, speeds) {
     if (!config.enabled) return undefined;
     if (!speeds || speeds.length < config.minimumDataPoints) return undefined;
-    const currentSpeed = speeds[speeds.length - 1];
-    const [initialSpeed] = speeds;
-    const change = Math.abs(currentSpeed - initialSpeed);
-    const updates = speeds.length;
+    const currentSpeed = speeds[speeds.length - 1],
+        [initialSpeed] = speeds,
+        change = Math.abs(currentSpeed - initialSpeed),
+        updates = speeds.length;
     // Find matching threshold considering both change magnitude and time
     const threshold = config.thresholds.find((t) => change >= t.minChange && change < t.maxChange && updates <= t.maxUpdates);
     if (threshold)
@@ -387,13 +376,12 @@ function calculateVariables(aircraft) {
         if (snapshot.lat !== undefined && snapshot.lon !== undefined) positions.push({ lat: snapshot.lat, lon: snapshot.lon, timestamp });
     });
     const lastSnapshot = trajectoryData[trajectoryData.length - 1]?.snapshot;
-    const now = Date.now();
     if (aircraft.calculated?.altitude !== undefined && (!lastSnapshot || lastSnapshot.calculated?.altitude !== aircraft.calculated.altitude))
         altitudes.push(aircraft.calculated.altitude);
     if (aircraft.baro_rate !== undefined && (!lastSnapshot || lastSnapshot.baro_rate !== aircraft.baro_rate)) verticalRates.push(aircraft.baro_rate);
     if (aircraft.gs !== undefined && (!lastSnapshot || lastSnapshot.gs !== aircraft.gs)) speeds.push(aircraft.gs);
     if (aircraft.lat !== undefined && aircraft.lon !== undefined && (!lastSnapshot || lastSnapshot.lat !== aircraft.lat || lastSnapshot.lon !== aircraft.lon))
-        positions.push({ lat: aircraft.lat, lon: aircraft.lon, timestamp: now });
+        positions.push({ lat: aircraft.lat, lon: aircraft.lon, timestamp: Date.now() });
     return {
         altitudes,
         verticalRates,
@@ -418,7 +406,7 @@ module.exports = {
         this.extra = extra;
     },
     preprocess: (aircraft) => {
-        aircraft.calculated.anomaly = { hasAnomaly: false, anomalies: [] };
+        aircraft.calculated.anomaly = { hasAnomaly: false };
         if (!aircraft.hex) return;
         const variables = calculateVariables(aircraft);
         const anomalies = [
@@ -445,7 +433,10 @@ module.exports = {
     sort: (a, b) => {
         const a_ = a.calculated.anomaly,
             b_ = b.calculated.anomaly;
-        return (severityRank[b_.highestSeverity] ?? 0) - (severityRank[a_.highestSeverity] ?? 0);
+        if (!a_.hasAnomaly) return 1;
+        if (!b_.hasAnomaly) return -1;
+        //
+        return severityRank[b_.highestSeverity] - severityRank[a_.highestSeverity];
     },
     getStats: (aircrafts, list) => {
         const byType = list

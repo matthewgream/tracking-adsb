@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const helpers = require('./filter-helpers.js');
+//const helpers = require('./filter-helpers.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -73,12 +73,13 @@ module.exports = {
         ];
     },
     preprocess: (aircraft) => {
-        aircraft.calculated.is_military = false;
-        if (aircraft.flight && this.militaryPrefixes.some((prefix) => aircraft.flight.trim().startsWith(prefix))) aircraft.calculated.is_military = true;
-        if (aircraft.flight && /^[A-Z]{4}\d{2}$/.test(aircraft.flight)) aircraft.calculated.is_military = true;
+        aircraft.calculated.military = { isMilitary: false };
+        if (aircraft.flight && this.militaryPrefixes.some((prefix) => aircraft.flight.trim().startsWith(prefix)))
+            aircraft.calculated.military.isMilitary = true;
+        if (aircraft.flight && /^[A-Z]{4}\d{2}$/.test(aircraft.flight)) aircraft.calculated.military.isMilitary = true;
     },
-    evaluate: (aircraft) => aircraft.calculated.is_military,
-    sort: (a, b) => helpers.sortDistance(a, b),
+    evaluate: (aircraft) => aircraft.calculated.military.isMilitary,
+    sort: (_a, _b) => 0,
     format: () => ({
         text: `military`,
         warn: true,

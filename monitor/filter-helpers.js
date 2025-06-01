@@ -82,30 +82,26 @@ function calculateRelativePosition(refLat, refLon, targetLat, targetLon, track) 
     const distance = calculateDistance(refLat, refLon, targetLat, targetLon);
     const bearing = calculateBearing(refLat, refLon, targetLat, targetLon);
     if (!Number.isFinite(distance) || !Number.isFinite(bearing)) return undefined;
-    let relativeTrack, approachingStation;
-    if (typeof track === 'number' && Number.isFinite(track)) {
-        relativeTrack = ((normalizeDeg(track) - bearing + 180) % 360) - 180;
-        approachingStation = Math.abs(relativeTrack) < 90;
-    }
+    const relativeTrack = typeof track === 'number' && Number.isFinite(track) ? ((normalizeDeg(track) - bearing + 180) % 360) - 180 : undefined;
     return {
         distance,
         bearing,
         relativeTrack,
         cardinalBearing: bearing2Cardinal(bearing),
-        approachingStation,
+        approachingStation: relativeTrack === undefined ? undefined : Math.abs(relativeTrack) < 90,
     };
 }
 function projectPosition(lat, lon, distanceKm, bearingDeg) {
-    const latRad = deg2rad(lat);
-    const lonRad = deg2rad(lon);
-    const bearingRad = deg2rad(bearingDeg);
-    const angularDistance = distanceKm / EARTH_RADIUS;
-    const latNewRad = Math.asin(Math.sin(latRad) * Math.cos(angularDistance) + Math.cos(latRad) * Math.sin(angularDistance) * Math.cos(bearingRad));
-    const lonRadNew =
-        lonRad +
-        Math.atan2(Math.sin(bearingRad) * Math.sin(angularDistance) * Math.cos(latRad), Math.cos(angularDistance) - Math.sin(latRad) * Math.sin(latNewRad));
-    let latNew = (latNewRad * 180) / Math.PI;
-    let lonNew = (((lonRadNew * 180) / Math.PI + 540) % 360) - 180;
+    const latRad = deg2rad(lat),
+        lonRad = deg2rad(lon);
+    const bearingRad = deg2rad(bearingDeg),
+        angularDistance = distanceKm / EARTH_RADIUS;
+    const latRadNew = Math.asin(Math.sin(latRad) * Math.cos(angularDistance) + Math.cos(latRad) * Math.sin(angularDistance) * Math.cos(bearingRad)),
+        lonRadNew =
+            lonRad +
+            Math.atan2(Math.sin(bearingRad) * Math.sin(angularDistance) * Math.cos(latRad), Math.cos(angularDistance) - Math.sin(latRad) * Math.sin(latRadNew));
+    const latNew = (latRadNew * 180) / Math.PI,
+        lonNew = (((lonRadNew * 180) / Math.PI + 540) % 360) - 180;
     return {
         lat: Math.max(-90, Math.min(90, latNew)),
         lon: lonNew,
@@ -397,9 +393,7 @@ function calculateLiftingScore(altitude, climbRate, groundSpeed) {
     const climbWeight = altitude < 3000 ? 2 : 1;
     // 3. Reasonable ground speed for takeoff (not too slow, not too fast)
     const speedWeight = groundSpeed > 50 && groundSpeed < 250 ? 1.2 : 0.8;
-
     const score = ((climbWeight * climbRate) / 100) * altitudeWeight * speedWeight;
-
     return {
         score: Number(score.toFixed(3)),
         factors: {
@@ -580,9 +574,10 @@ function calculateOverheadTrajectory(lat, lon, alt, aircraft, trajectoryData = u
     const overheadSeconds = Math.round(Math.abs(alongTrackDistance / speedKmMin) * 60);
     const overheadTime = new Date(Date.now() + (isApproaching ? overheadSeconds : -overheadSeconds) * 1000);
     const approachBearing = normalizeDeg(aircraft.track + (crossTrackDistance >= 0 ? 90 : -90));
-    let overheadAltitude = aircraft.calculated.altitude;
-    if (aircraft.baro_rate && isApproaching)
-        overheadAltitude = Math.max(0, Math.round(aircraft.calculated.altitude + (aircraft.baro_rate / 60) * overheadSeconds));
+    const overheadAltitude =
+        aircraft.baro_rate && isApproaching
+            ? aircraft.calculated.altitude
+            : Math.max(0, Math.round(aircraft.calculated.altitude + (aircraft.baro_rate / 60) * overheadSeconds));
     const relativeAltitude = overheadAltitude - stationAltitudeFeet;
     const slantRange = calculateSlantRange(overheadDistance, relativeAltitude);
     const verticalAngle = calculateVerticalAngle(overheadDistance, relativeAltitude, lat);
@@ -722,8 +717,8 @@ function calculateClosureDetails(aircraft, other) {
         const timeToClosest = closureAnalysis.timeToClosestApproach;
         if (timeToClosest > 0 && timeToClosest < 600) {
             closureTime = timeToClosest;
-            const closestPoint1 = projectPosition(aircraft.lat, aircraft.lon, knotsToKmPerMin(aircraft.gs) * (timeToClosest / 60), aircraft.track);
-            const closestPoint2 = projectPosition(other.lat, other.lon, knotsToKmPerMin(other.gs) * (timeToClosest / 60), other.track);
+            const closestPoint1 = projectPosition(aircraft.lat, aircraft.lon, knotsToKmPerMin(aircraft.gs) * (timeToClosest / 60), aircraft.track),
+                closestPoint2 = projectPosition(other.lat, other.lon, knotsToKmPerMin(other.gs) * (timeToClosest / 60), other.track);
             closestApproach = {
                 distance: calculateDistance(closestPoint1.lat, closestPoint1.lon, closestPoint2.lat, closestPoint2.lon),
                 timeSeconds: timeToClosest,

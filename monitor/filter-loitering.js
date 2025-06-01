@@ -127,7 +127,7 @@ function analyzeBoundingBox(trajectoryData, config) {
     const centerLat = (minLat + maxLat) / 2,
         centerLon = (minLon + maxLon) / 2;
     const distances = positions.map((p) => helpers.calculateDistance(centerLat, centerLon, p.lat, p.lon));
-    const avgRadius = distances.reduce((a, b) => a + b, 0) / distances.length;
+    const radius = distances.reduce((a, b) => a + b, 0) / distances.length;
     return {
         pass: true,
         boundingBox: {
@@ -137,7 +137,7 @@ function analyzeBoundingBox(trajectoryData, config) {
             maxLon,
             diagonal,
             center: { lat: centerLat, lon: centerLon },
-            radius: avgRadius,
+            radius,
         },
         positions,
         totalDistance,
@@ -201,8 +201,8 @@ function detectHoveringPattern(positions, config, aircraftCategory) {
     if (speeds.length < 5) return { detected: false };
     const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length,
         maxSpeed = Math.max(...speeds),
-        minSpeed = Math.min(...speeds),
-        speedVariation = maxSpeed - minSpeed;
+        minSpeed = Math.min(...speeds);
+    const speedVariation = maxSpeed - minSpeed;
     const centerLat = lats.reduce((a, b) => a + b, 0) / lats.length,
         centerLon = lons.reduce((a, b) => a + b, 0) / lons.length;
     const positionVariation = Math.max(...positions.map((p) => helpers.calculateDistance(centerLat, centerLon, p.lat, p.lon)));
@@ -224,17 +224,17 @@ function calculateLoiteringScore(analysis, patterns, config, categoryBonus = 0) 
     const { boundingBox, timeSpan, positions } = analysis;
     const { weights } = config.scoring;
     // 1. Bounding box score (tighter = higher score)
-    const expectedDistance = (timeSpan / 1000 / 60) * 2; // km at 120 kts for time period
-    const boundingBoxScore = Math.max(0, 1 - boundingBox.diagonal / expectedDistance);
+    const expectedDistance = (timeSpan / 1000 / 60) * 2, // km at 120 kts for time period
+        boundingBoxScore = Math.max(0, 1 - boundingBox.diagonal / expectedDistance);
     // 2. Pattern matching score
-    const patternScores = [patterns.circling.confidence, patterns.reversing.confidence, patterns.hovering.confidence];
-    const patternLabels = ['circling', 'reversing', 'hovering'];
-    const patternScore = Math.max(...patternScores);
+    const patternScores = [patterns.circling.confidence, patterns.reversing.confidence, patterns.hovering.confidence],
+        patternLabels = ['circling', 'reversing', 'hovering'],
+        patternScore = Math.max(...patternScores);
     // 3. Altitude consistency (from bounding box positions)
     const altitudes = positions.map((p) => p.altitude).filter((a) => a !== undefined);
     if (altitudes.length > 0) {
-        const altVariation = Math.max(...altitudes) - Math.min(...altitudes);
-        const altitudeScore = Math.max(0, 1 - altVariation / 1000); // 1000 ft variation = 0 score
+        const altitudeVariation = Math.max(...altitudes) - Math.min(...altitudes);
+        const altitudeScore = Math.max(0, 1 - altitudeVariation / 1000); // 1000 ft variation = 0 score
         // 4. Calculate weighted score
         const score =
             boundingBoxScore * weights.boundingBoxRatio +
@@ -315,9 +315,10 @@ module.exports = {
     sort: (a, b) => {
         const a_ = a.calculated.loitering,
             b_ = b.calculated.loitering;
-        const aScore = a_.isLoitering ? a_.score : Infinity,
-            bScore = b_.isLoitering ? b_.score : Infinity;
-        if (aScore !== bScore) return bScore - aScore;
+        if (!a_.isLoitering) return 1;
+        if (!b_.isLoitering) return -1;
+        //
+        if (a_.score !== b_.score) return b_.score - a_.score;
         return b_.duration - a_.duration;
     },
     getStats: (aircrafts, list) => {

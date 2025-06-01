@@ -8,7 +8,6 @@ const helpers = require('./filter-helpers.js');
 
 const DEFAULT_HORIZONTAL_THRESHOLD = 1; // NM, converted to km
 const DEFAULT_VERTICAL_THRESHOLD = 1000; // feet
-//const DEFAULT_AIRPORT_EXCLUSION_RADIUS = 5; // km - don't report airprox near airports
 const DEFAULT_CLOSURE_RATE_THRESHOLD = 400; // knots - high closure rate increases severity
 
 function calculateRiskCategory(horizontalDistance, verticalSeparation, closureRate) {
@@ -93,16 +92,12 @@ module.exports = {
     sort: (a, b) => {
         const a_ = a.calculated.airprox,
             b_ = b.calculated.airprox;
-        const catA = categoryOrder[a_.riskCategory] ?? Infinity,
-            catB = categoryOrder[b_.riskCategory] ?? Infinity;
-        if (catA !== catB) return catA - catB;
-        const hdistA = a_.horizontalDistance ?? Infinity,
-            hdistB = b_.horizontalDistance ?? Infinity;
-        if (hdistA !== hdistB) return hdistA - hdistB;
-        const vertA = a_.verticalSeparation ?? Infinity,
-            vertB = b_.verticalSeparation ?? Infinity;
-        if (vertA !== vertB) return vertA - vertB;
-        return helpers.sortDistance(a, b);
+        if (!a_.hasAirprox) return 1;
+        if (!b_.hasAirprox) return -1;
+        //
+        if (categoryOrder[a_.riskCategory] !== categoryOrder[b_.riskCategory]) return categoryOrder[a_.riskCategory] - categoryOrder[b_.riskCategory];
+        if (a_.horizontalDistance !== b_.horizontalDistance) return a_.horizontalDistance - b_.horizontalDistance;
+        return a_.verticalSeparation - b_.verticalSeparation;
     },
     getStats: (aircrafts, list) => {
         const byCategory = list

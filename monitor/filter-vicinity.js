@@ -15,11 +15,12 @@ module.exports = {
         this.extra = extra;
     },
     preprocess: (aircraft) => {
-        aircraft.calculated.is_proximate = false;
-        if (aircraft.calculated?.distance <= this.conf.distance && aircraft.calculated?.altitude <= this.conf.altitude) aircraft.calculated.is_proximate = true;
+        aircraft.calculated.vicinity = { isProximate: false };
+        if (aircraft.calculated?.distance <= this.conf.distance && aircraft.calculated?.altitude <= this.conf.altitude)
+            aircraft.calculated.vicinity.isProximate = true;
     },
-    evaluate: (aircraft) => aircraft.calculated.is_proximate,
-    sort: (a, b) => helpers.sortDistance(a, b),
+    evaluate: (aircraft) => aircraft.calculated.vicinity.isProximate,
+    sort: (_a, _b) => 0,
     format: (aircraft) => {
         const { positionRelative } = aircraft.calculated;
         const direction = positionRelative ? `${positionRelative.cardinalBearing} direction` : 'nearby';

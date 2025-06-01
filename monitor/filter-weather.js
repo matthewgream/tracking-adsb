@@ -102,10 +102,8 @@ const TEMPERATURE_INVERSION_CONFIG = {
 function detectIcingConditions(config, aircraft) {
     if (!config.enabled) return undefined;
     if (aircraft.oat === undefined || !aircraft.calculated?.altitude) return undefined;
-    // Check if temperature is in icing range
     const inIcingTemp = aircraft.oat >= config.temperatureRange.min && aircraft.oat <= config.temperatureRange.max;
     if (!inIcingTemp) return undefined;
-    // Find matching altitude band
     const altitudeBand = config.altitudeBands.find(
         (band) => aircraft.calculated.altitude >= band.minAltitude && aircraft.calculated.altitude <= band.maxAltitude
     );
@@ -122,7 +120,6 @@ function detectSevereIcingRisk(config, aircraft) {
     if (!config.enabled) return undefined;
     if (aircraft.oat === undefined || !aircraft.calculated?.altitude) return undefined;
     const { sldConditions } = config;
-    // Check SLD conditions
     if (
         aircraft.oat >= sldConditions.temperatureRange.min &&
         aircraft.oat <= sldConditions.temperatureRange.max &&
@@ -143,12 +140,10 @@ function detectTurbulence(config, verticalRates) {
         minRate = Math.min(...verticalRates),
         variation = maxRate - minRate;
     if (variation > config.variationThreshold) {
-        // Calculate standard deviation
-        const avg = verticalRates.reduce((sum, rate) => sum + rate, 0) / verticalRates.length;
-        const variance = verticalRates.reduce((sum, rate) => sum + (rate - avg) ** 2, 0) / verticalRates.length;
-        const standardDeviation = Math.sqrt(variance);
-        // Find severity band
-        const severityBand = config.severityBands.find((band) => standardDeviation <= band.maxStdDev);
+        const average = verticalRates.reduce((sum, rate) => sum + rate, 0) / verticalRates.length,
+            variance = verticalRates.reduce((sum, rate) => sum + (rate - average) ** 2, 0) / verticalRates.length,
+            standardDeviation = Math.sqrt(variance),
+            severityBand = config.severityBands.find((band) => standardDeviation <= band.maxStdDev);
         if (severityBand)
             return {
                 type: 'turbulence',
@@ -168,12 +163,9 @@ function detectStrongWinds(config, aircraft) {
     if (!config.enabled) return undefined;
     if (!aircraft.gs || !aircraft.tas || !aircraft.calculated?.altitude) return undefined;
     const difference = Math.abs(aircraft.gs - aircraft.tas);
-    // Skip if below minimum difference
     if (difference < config.minimumDifference) return undefined;
-    // Find the appropriate altitude band
     const altitudeBand = config.altitudeBands.find((band) => aircraft.calculated.altitude <= band.maxAltitude);
     if (!altitudeBand) return undefined;
-    // Check if difference exceeds threshold
     if (difference > altitudeBand.threshold)
         return {
             type: 'strong-winds',
@@ -192,10 +184,9 @@ function detectStrongWinds(config, aircraft) {
 function detectTemperatureInversion(config, aircraft) {
     if (!config.enabled) return undefined;
     if (aircraft.oat === undefined || !aircraft.calculated?.altitude) return undefined;
-    // Calculate expected temperature based on ISA
-    const seaLevelTemp = 15; // °C (ISA standard)
-    const expectedTemp = seaLevelTemp - (aircraft.calculated.altitude / 1000) * config.standardLapseRate;
-    const tempDeviation = aircraft.oat - expectedTemp;
+    const seaLevelTemp = 15, // °C (ISA standard)
+        expectedTemp = seaLevelTemp - (aircraft.calculated.altitude / 1000) * config.standardLapseRate,
+        tempDeviation = aircraft.oat - expectedTemp;
     // Check if deviation exceeds threshold
     if (Math.abs(tempDeviation) > config.deviationThreshold)
         return {
@@ -252,7 +243,7 @@ module.exports = {
         this.extra = extra;
     },
     preprocess: (aircraft) => {
-        aircraft.calculated.weather = { inWeatherOperation: false, conditions: [] };
+        aircraft.calculated.weather = { inWeatherOperation: false };
         if (!aircraft.hex) return;
         const variables = calculateVariables(aircraft);
         const conditions = [
@@ -276,7 +267,10 @@ module.exports = {
     sort: (a, b) => {
         const a_ = a.calculated.weather,
             b_ = b.calculated.weather;
-        return (severityRank[b_.highestSeverity] ?? 0) - (severityRank[a_.highestSeverity] ?? 0);
+        if (!a_.inWeatherOperation) return 1;
+        if (!b_.inWeatherOperation) return -1;
+        //
+        return severityRank[a_.highestSeverity] - severityRank[b_.highestSeverity];
     },
     getStats: (aircrafts, list) => {
         const byCondition = list

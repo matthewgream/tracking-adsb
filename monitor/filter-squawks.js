@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const helpers = require('./filter-helpers.js');
+//const helpers = require('./filter-helpers.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -548,8 +548,7 @@ function detectDescriptionBasedAnomalies(tools, aircraft, squawkMatches) {
                     });
             }
             // Check for distance restrictions (e.g., "within 20 NM")
-            const distanceMatch = lowerDesc.match(/within (\d+) nm/i);
-            if (distanceMatch && aircraft.gs > 250)
+            if (lowerDesc.match(/within (\d+) nm/i) && aircraft.gs > 250)
                 anomalies.push({
                     type: 'local-code-high-speed',
                     severity: 'low',
@@ -577,16 +576,19 @@ function detectDescriptionBasedAnomalies(tools, aircraft, squawkMatches) {
                     description: 'Rotorcraft-specific code misuse',
                 });
             // Check for "conspicuity" codes being used with discrete services
-            if (lowerDesc.includes('conspicuity') && aircraft.flight && !aircraft.flight.includes('[')) {
-                // Has a proper callsign, might be receiving service
-                if (['approach', 'tower', 'radar'].some((service) => squawkMatches.some((m) => m.type === service)))
-                    anomalies.push({
-                        type: 'conspicuity-with-service',
-                        severity: 'low',
-                        details: `Conspicuity code ${aircraft.squawk} with apparent ATC service`,
-                        description: 'Conspicuity code possibly receiving service',
-                    });
-            }
+            // Has a proper callsign, might be receiving service
+            if (
+                lowerDesc.includes('conspicuity') &&
+                aircraft.flight &&
+                !aircraft.flight.includes('[') &&
+                ['approach', 'tower', 'radar'].some((service) => squawkMatches.some((m) => m.type === service))
+            )
+                anomalies.push({
+                    type: 'conspicuity-with-service',
+                    severity: 'low',
+                    details: `Conspicuity code ${aircraft.squawk} with apparent ATC service`,
+                    description: 'Conspicuity code possibly receiving service',
+                });
         });
     });
 
@@ -664,15 +666,15 @@ module.exports = {
         this.detectAnomalies = this.conf.detectAnomalies !== false; // Default true
     },
     preprocess: (aircraft) => {
-        aircraft.calculated.squawk = { code: aircraft.squawk, matches: [], isInteresting: false, anomalies: [] };
+        aircraft.calculated.squawk = { code: aircraft.squawk, hasAnomalies: false, matches: [], isInteresting: false };
         if (aircraft.squawk === undefined || !this.squawkData) return;
 
         const matches = this.squawkData.findByCode(aircraft.squawk);
         aircraft.calculated.squawk.matches = matches;
 
-        const isWatchedCode = this.watchCodes.has(aircraft.squawk);
-        const hasWatchedType = matches.some((match) => this.watchTypes.has(match.type));
-        aircraft.calculated.squawk.isInteresting = isWatchedCode || hasWatchedType;
+        const isWatchedCode = this.watchCodes.has(aircraft.squawk),
+            isWatchedType = matches.some((match) => this.watchTypes.has(match.type));
+        aircraft.calculated.squawk.isInteresting = isWatchedCode || isWatchedType;
 
         if (this.detectAnomalies && matches.length > 0) {
             const anomalies = [
@@ -701,6 +703,7 @@ module.exports = {
                 detectTrainingCodeValidation(this.extra, aircraft, matches),
             ].filter(Boolean);
             if (anomalies.length > 0) {
+                aircraft.calculated.squawk.hasAnomalies = true;
                 aircraft.calculated.squawk.anomalies = anomalies;
                 aircraft.calculated.squawk.highestSeverity = anomalies.reduce(
                     (highest, current) => (severityRank[current.severity] > severityRank[highest] ? current.severity : highest),
@@ -709,10 +712,14 @@ module.exports = {
             }
         }
     },
-    evaluate: (aircraft) => aircraft.calculated.squawk.isInteresting || aircraft.calculated.squawk.anomalies.length > 0,
+    evaluate: (aircraft) => aircraft.calculated.squawk.isInteresting || aircraft.calculated.squawk.hasAnomalies,
     sort: (a, b) => {
         const a_ = a.calculated.squawk,
             b_ = b.calculated.squawk;
+        if (!a_.hasAnomalies && !a_.isInteresting) return 1;
+        if (!b_.hasAnomalies && !b_.isInteresting) return -1;
+        //
+        // XXX
         if (a_.anomalies.length > 0 || b_.anomalies.length > 0) {
             const aSeverity = severityRank[a_.highestSeverity] ?? 0,
                 bSeverity = severityRank[b_.highestSeverity] ?? 0;
@@ -723,8 +730,7 @@ module.exports = {
         if (aCodePriority !== bCodePriority) return aCodePriority - bCodePriority;
         const aTypePriority = Math.min(...a_.matches.map((m) => this.typePriorities[m.type] ?? Infinity)),
             bTypePriority = Math.min(...b_.matches.map((m) => this.typePriorities[m.type] ?? Infinity));
-        if (aTypePriority !== bTypePriority) return aTypePriority - bTypePriority;
-        return helpers.sortDistance(a, b);
+        return aTypePriority - bTypePriority;
     },
     getStats: (aircrafts, list) => {
         const byType = list

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const helpers = require('./filter-helpers.js');
+//const helpers = require('./filter-helpers.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -15,23 +15,24 @@ module.exports = {
         this.extra = extra;
     },
     preprocess: (aircraft) => {
-        aircraft.calculated.airports_nearby = [];
-        if (aircraft.lat !== undefined && aircraft.lon !== undefined)
-            aircraft.calculated.airports_nearby = this.extra.data.airports.findNearby(aircraft.lat, aircraft.lon, { altitude: aircraft.calculated?.altitude });
+        aircraft.calculated.airports_nearby = { hasAirportsNearby: false };
+        if (aircraft.lat !== undefined && aircraft.lon !== undefined) {
+            const airports = this.extra.data.airports.findNearby(aircraft.lat, aircraft.lon, { altitude: aircraft.calculated?.altitude });
+            if (airports.length > 0) aircraft.calculated.airports_nearby = { hasAirportsNearby: true, airports };
+        }
     },
-    evaluate: (aircraft) => aircraft.calculated.airports_nearby.length > 0,
+    evaluate: (aircraft) => aircraft.calculated.airports_nearby.hasAirportsNearby,
     sort: (a, b) => {
         const a_ = a.calculated.airports_nearby,
             b_ = b.calculated.airports_nearby;
-        if (a_.length === 0 && b_.length === 0) return 0;
-        if (a_.length === 0) return 1;
-        if (b_.length === 0) return -1;
-        return helpers.sortDistance(a, b);
+        if (!a_.hasAirportsNearby) return 1;
+        if (!b_.hasAirportsNearby) return -1;
+        //
+        return b_.ariports.length - a_.airports.length;
     },
     getStats: (aircrafts, list) => {
         const byAirport = list
-            .filter((aircraft) => aircraft.calculated.airports_nearby.length > 0)
-            .map((aircraft) => aircraft.calculated.airports_nearby[0].icao)
+            .map((aircraft) => aircraft.calculated.airports_nearby.airports[0].icao)
             .reduce((counts, icao) => ({ ...counts, [icao]: (counts[icao] || 0) + 1 }), {});
         return {
             byAirport,
@@ -39,7 +40,7 @@ module.exports = {
     },
     format: (aircraft) => {
         const { airports_nearby } = aircraft.calculated;
-        const [airport] = airports_nearby;
+        const [airport] = airports_nearby.airports;
         return {
             text: `near ${this.extra.format.formatAirport(airport) || 'airport'}`,
             warn: this.conf.priorities?.includes(airport.icao),

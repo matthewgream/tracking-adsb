@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const helpers = require('./filter-helpers.js');
+//const helpers = require('./filter-helpers.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -16,12 +16,12 @@ module.exports = {
         this.emergencySquawks = ['7500', '7600', '7700'];
     },
     preprocess: (aircraft) => {
-        aircraft.calculated.is_emergency = false;
-        if (aircraft.emergency && aircraft.emergency !== 'none') aircraft.calculated.is_emergency = true;
-        if (aircraft.squawk && this.emergencySquawks.includes(aircraft.squawk)) aircraft.calculated.is_emergency = true;
+        aircraft.calculated.emergency = { hasEmergency: false };
+        if (aircraft.emergency && aircraft.emergency !== 'none') aircraft.calculated.emergency.hasEmergency = true;
+        if (aircraft.squawk && this.emergencySquawks.includes(aircraft.squawk)) aircraft.calculated.emergency.hasEmergency = true;
     },
-    evaluate: (aircraft) => aircraft.calculated.is_emergency,
-    sort: (a, b) => helpers.sortDistance(a, b),
+    evaluate: (aircraft) => aircraft.calculated.emergency.hasEmergency,
+    sort: (_a, _b) => 0,
     format: (aircraft) => ({
         text: `EMERGENCY ${aircraft.emergency || aircraft.squawk}`,
         warn: true,

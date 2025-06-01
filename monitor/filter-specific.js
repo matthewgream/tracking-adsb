@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const helpers = require('./filter-helpers.js');
+//const helpers = require('./filter-helpers.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -50,18 +50,18 @@ module.exports = {
         };
     },
     preprocess: (aircraft) => {
-        aircraft.calculated.specific = {
-            matches: this.flightsCompiled.filter((p) => aircraft?.[p.field] && p.regex.test(aircraft[p.field])).map(({ regex, ...rest }) => rest), // eslint-disable-line no-unused-vars
-        };
+        aircraft.calculated.specific = { isSpecific: false };
+        const matches = this.flightsCompiled.filter((p) => aircraft?.[p.field] && p.regex.test(aircraft[p.field])).map(({ regex, ...rest }) => rest); // eslint-disable-line no-unused-vars
+        if (matches.length > 0) aircraft.calculated.specific = { isSpecific: true, matches };
     },
-    evaluate: (aircraft) => aircraft.calculated.specific.matches.length > 0,
+    evaluate: (aircraft) => aircraft.calculated.specific.isSpecific,
     sort: (a, b) => {
         const a_ = a.calculated.specific,
             b_ = b.calculated.specific;
-        const catA = this.categoryPriorities[a_.matches?.[0]?.category] || Infinity,
-            catB = this.categoryPriorities[b_.matches?.[0]?.category] || Infinity;
-        if (catA !== catB) return catA - catB;
-        return helpers.sortDistance(a, b);
+        if (!a_.isSpecific) return 1;
+        if (!b_.isSpecific) return -1;
+        //
+        return this.categoryPriorities[a_.matches[0].category] - this.categoryPriorities[b_.matches[0].category];
     },
     getStats: (aircrafts, list) => {
         const byCategory = list

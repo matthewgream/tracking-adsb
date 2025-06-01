@@ -285,7 +285,8 @@ async function filterAircraft(filters, aircraftList) {
         const aHighestPriority = Math.min(...aFilters.map((f) => f.priority)),
             bHighestPriority = Math.min(...bFilters.map((f) => f.priority));
         if (aHighestPriority !== bHighestPriority) return aHighestPriority - bHighestPriority;
-        return filterSet.find((f) => f.priority === aHighestPriority).sort(a, b);
+        const result = filterSet.find((f) => f.priority === aHighestPriority).sort(a, b);
+        return result == 0 ? helpers.sortDistance(a, b) : result;
     });
 }
 
@@ -332,6 +333,7 @@ async function obtain(config, flights, filters, extra) {
         aircraft.forEach((a) => (a.calculated.timestamp_updated = now));
         return { data: { ...data, aircraft }, stat, filteredAircraft };
     } catch (e) {
+        console.log(e);
         return {
             stat: {
                 error: e.message,
@@ -496,9 +498,9 @@ function alertsBuilder(config, filters, processedData, stats) {
 function alertMeta(format, aircraft) {
     const aircraftType = aircraft.category || '';
     const priorityType =
-        aircraft.calculated.is_emergency ||
-        aircraft.calculated.is_military ||
-        (aircraft.calculated.is_proximate && (aircraft.calculated.landing?.isLanding || aircraft.calculated.lifting?.isLifting));
+        aircraft.calculated.emergency.hasEmergency ||
+        aircraft.calculated.military.isMilitary ||
+        (aircraft.calculated.vicinity.isProximate && (aircraft.calculated.landing.isLanding || aircraft.calculated.lifting.isLifting));
 
     const { positionRelative: position, distance, altitude } = aircraft.calculated;
     const positionInfo = position ? ` (${distance.toFixed(1)}km ${position.cardinalBearing} ${formatAltitude(altitude)})` : '';

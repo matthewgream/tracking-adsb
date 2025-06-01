@@ -33,7 +33,10 @@ module.exports = {
     sort: (a, b) => {
         const a_ = a.calculated.lifting,
             b_ = b.calculated.lifting;
-        return (b_.isLifting ? b_.liftingScore : Infinity) - (a_.isLifting ? a_.liftingScore : Infinity);
+        if (!a_.isLifting) return 1;
+        if (!b_.isLifting) return -1;
+        //
+        return b_.liftingScore - a_.liftingScore;
     },
     getStats: (aircrafts, list) => {
         const byAirport = list
