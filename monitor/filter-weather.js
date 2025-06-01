@@ -274,9 +274,9 @@ module.exports = {
     },
     evaluate: (aircraft) => aircraft.calculated.weather.inWeatherOperation,
     sort: (a, b) => {
-        a = a.calculated.weather;
-        b = b.calculated.weather;
-        return severityRank[b.highestSeverity] - severityRank[a.highestSeverity];
+        const a_ = a.calculated.weather,
+            b_ = b.calculated.weather;
+        return (severityRank[b_.highestSeverity] ?? 0) - (severityRank[a_.highestSeverity] ?? 0);
     },
     getStats: (aircrafts, list) => {
         const byCondition = list

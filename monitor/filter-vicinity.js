@@ -19,7 +19,7 @@ module.exports = {
         if (aircraft.calculated?.distance <= this.conf.distance && aircraft.calculated?.altitude <= this.conf.altitude) aircraft.calculated.is_proximate = true;
     },
     evaluate: (aircraft) => aircraft.calculated.is_proximate,
-    sort: (a, b) => a.calculated.distance - b.calculated.distance,
+    sort: (a, b) => helpers.sortDistance(a, b),
     format: (aircraft) => {
         const { positionRelative } = aircraft.calculated;
         const direction = positionRelative ? `${positionRelative.cardinalBearing} direction` : 'nearby';

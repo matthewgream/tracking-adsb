@@ -28,13 +28,13 @@ module.exports = {
     },
     evaluate: (aircraft) => aircraft.calculated.landing.isLanding,
     sort: (a, b) => {
-        a = a.calculated.landing;
-        b = b.calculated.landing;
-        const aIsUnexpected = !a.isPossibleLanding,
-            bIsUnexpected = !b.isPossibleLanding;
-        if (aIsUnexpected && !bIsUnexpected) return -1;
-        if (!aIsUnexpected && bIsUnexpected) return 1;
-        return a.groundSeconds - b.groundSeconds;
+        const a_ = a.calculated.landing,
+            b_ = b.calculated.landing;
+	if (a_.isLanding && !b_.isLanding) return -1;
+	if (!a_.isLanding && b_.isLanding) return 1;
+        if (!a_.isPossibleLanding && b_.isPossibleLanding) return -1;
+        if (a_.isPossibleLanding && !b_.isPossibleLanding) return 1;
+        return a_.groundSeconds - b_.groundSeconds;
     },
     getStats: (aircrafts, list) => ({
         landingCount: list.filter((a) => a.calculated.landing.isPossibleLanding).length,

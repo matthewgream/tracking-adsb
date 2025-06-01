@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-//const helpers = require('./filter-helpers.js');
+const helpers = require('./filter-helpers.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -56,9 +56,12 @@ module.exports = {
     },
     evaluate: (aircraft) => aircraft.calculated.specific.matches.length > 0,
     sort: (a, b) => {
-        const catA = this.categoryPriorities[a.calculated.specific.matches?.[0].category] || 999,
-            catB = this.categoryPriorities[b.calculated.specific.matches?.[0].category] || 999;
-        return catA === catB ? a.calculated.distance - b.calculated.distance : catA - catB;
+        const a_ = a.calculated.specific,
+            b_ = b.calculated.specific;
+        const catA = this.categoryPriorities[a_.matches?.[0]?.category] || Infinity,
+            catB = this.categoryPriorities[b_.matches?.[0]?.category] || Infinity;
+        if (catA !== catB) return catA - catB;
+        return helpers.sortDistance(a, b);
     },
     getStats: (aircrafts, list) => {
         const byCategory = list

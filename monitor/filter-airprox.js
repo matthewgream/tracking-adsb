@@ -91,11 +91,18 @@ module.exports = {
     },
     evaluate: (aircraft) => aircraft.calculated.airprox.hasAirprox,
     sort: (a, b) => {
-        a = a.calculated.airprox;
-        b = b.calculated.airprox;
-        const catA = categoryOrder[a.riskCategory],
-            catB = categoryOrder[b.riskCategory];
-        return catA === catB ? a.horizontalDistance - b.horizontalDistance : catA - catB;
+        const a_ = a.calculated.airprox,
+            b_ = b.calculated.airprox;
+        const catA = categoryOrder[a_.riskCategory] ?? Infinity,
+            catB = categoryOrder[b_.riskCategory] ?? Infinity;
+        if (catA !== catB) return catA - catB;
+        const hdistA = a_.horizontalDistance ?? Infinity,
+            hdistB = b_.horizontalDistance ?? Infinity;
+        if (hdistA !== hdistB) return hdistA - hdistB;
+        const vertA = a_.verticalSeparation ?? Infinity,
+            vertB = b_.verticalSeparation ?? Infinity;
+        if (vertA !== vertB) return vertA - vertB;
+        return helpers.sortDistance(a, b);
     },
     getStats: (aircrafts, list) => {
         const byCategory = list

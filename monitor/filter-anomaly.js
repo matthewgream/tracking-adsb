@@ -443,9 +443,9 @@ module.exports = {
     },
     evaluate: (aircraft) => aircraft.calculated.anomaly.hasAnomaly,
     sort: (a, b) => {
-        a = a.calculated.anomaly;
-        b = b.calculated.anomaly;
-        return severityRank[b.highestSeverity] - severityRank[a.highestSeverity];
+        const a_ = a.calculated.anomaly,
+            b_ = b.calculated.anomaly;
+        return (severityRank[b_.highestSeverity] ?? 0) - (severityRank[a_.highestSeverity] ?? 0);
     },
     getStats: (aircrafts, list) => {
         const byType = list

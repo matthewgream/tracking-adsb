@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-//const helpers = require('./filter-helpers.js');
+const helpers = require('./filter-helpers.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -21,12 +21,12 @@ module.exports = {
     },
     evaluate: (aircraft) => aircraft.calculated.airports_nearby.length > 0,
     sort: (a, b) => {
-        a = a.calculated.airports_nearby;
-        b = b.calculated.airports_nearby;
-        if (a.length === 0 && b.length === 0) return 0;
-        if (a.length === 0) return 1;
-        if (b.length === 0) return -1;
-        return a[0].distance - b[0].distance;
+        const a_ = a.calculated.airports_nearby,
+            b_ = b.calculated.airports_nearby;
+        if (a_.length === 0 && b_.length === 0) return 0;
+        if (a_.length === 0) return 1;
+        if (b_.length === 0) return -1;
+        return helpers.sortDistance(a, b);
     },
     getStats: (aircrafts, list) => {
         const byAirport = list

@@ -30,9 +30,9 @@ module.exports = {
     },
     evaluate: (aircraft) => aircraft.calculated.overhead.willIntersectOverhead,
     sort: (a, b) => {
-        a = a.calculated.overhead;
-        b = b.calculated.overhead;
-        return (a.overheadTime || Infinity) - (b.overheadTime || Infinity);
+        const a_ = a.calculated.overhead,
+            b_ = b.calculated.overhead;
+        return (a_.overheadTime ?? Infinity) - (b_.overheadTime ?? Infinity);
     },
     format: (aircraft) => {
         const { overhead } = aircraft.calculated;

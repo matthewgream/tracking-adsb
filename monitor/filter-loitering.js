@@ -313,10 +313,12 @@ module.exports = {
     },
     evaluate: (aircraft) => aircraft.calculated.loitering.isLoitering,
     sort: (a, b) => {
-        const aLoit = a.calculated.loitering,
-            bLoit = b.calculated.loitering;
-        if (aLoit.score !== bLoit.score) return bLoit.score - aLoit.score;
-        return bLoit.duration - aLoit.duration;
+        const a_ = a.calculated.loitering,
+            b_ = b.calculated.loitering;
+        const aScore = a_.isLoitering ? a_.score : Infinity,
+            bScore = b_.isLoitering ? b_.score : Infinity;
+        if (aScore !== bScore) return bScore - aScore;
+        return b_.duration - a_.duration;
     },
     getStats: (aircrafts, list) => {
         const byPattern = list

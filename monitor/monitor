@@ -238,25 +238,32 @@ function preprocessAircraft(extra, aircraftList) {
 const filterModules = [
     require('./filter-emergency.js'),
     require('./filter-military.js'),
-    require('./filter-vicinity.js'),
-    require('./filter-airport.js'),
-    require('./filter-overhead.js'),
-    require('./filter-landing.js'),
-    require('./filter-lifting.js'),
-    require('./filter-airprox.js'),
     require('./filter-specific.js'),
+    require('./filter-squawks.js'),
+    //
     require('./filter-anomaly.js'),
     require('./filter-weather.js'),
-    require('./filter-squawks.js'),
-    require('./filter-loitering.js'),
     // require('./filter-performance.js'), // too many false positives
+    //
+    require('./filter-airprox.js'),
+    require('./filter-airport.js'),
+    require('./filter-landing.js'),
+    require('./filter-lifting.js'),
+    require('./filter-loitering.js'),
+    require('./filter-vicinity.js'),
+    require('./filter-overhead.js'),
 ];
 
 function filterInit(config, extra) {
     const filterSet = filterModules.filter((filter) => config[filter.id]?.enabled == undefined || config[filter.id]?.enabled);
     const filterMap = Object.fromEntries(filterSet.map((module) => [module.id, module]));
     filterSet.forEach((filter) => filter.config(config[filter.id], extra));
-    console.error(`filters: ${filterModules.length} available, ${filterSet.length} enabled: ${filterSet.map((filter) => filter.id).join(', ')}`);
+    console.error(
+        `filters: ${filterModules.length} available, ${filterSet.length} enabled: ${filterSet
+            .sort((a, b) => a.priority - b.priority)
+            .map((filter) => filter.id + ':' + filter.priority)
+            .join(', ')}`
+    );
     return { filterSet, filterMap };
 }
 
@@ -274,22 +281,18 @@ async function filterAircraft(filters, aircraftList) {
     return filtered.sort((a, b) => {
         const aFilters = filterSet.filter((f) => f.evaluate(a)),
             bFilters = filterSet.filter((f) => f.evaluate(b));
-        if (aFilters.length === 0 || bFilters.length === 0) {
-            if (a.calculated.distance === undefined && b.calculated.distance === undefined) return 0;
-            if (a.calculated.distance === undefined) return 1;
-            if (b.calculated.distance === undefined) return -1;
-            return a.calculated.distance - b.calculated.distance;
-        }
+        if (aFilters.length === 0 || bFilters.length === 0) return helpers.sortDistance(a, b); // should not happen
         const aHighestPriority = Math.min(...aFilters.map((f) => f.priority)),
             bHighestPriority = Math.min(...bFilters.map((f) => f.priority));
-        return aHighestPriority === bHighestPriority ? filterSet.find((f) => f.priority === aHighestPriority).sort(a, b) : aHighestPriority - bHighestPriority;
+        if (aHighestPriority !== bHighestPriority) return aHighestPriority - bHighestPriority;
+        return filterSet.find((f) => f.priority === aHighestPriority).sort(a, b);
     });
 }
 
 function _filterStats(filter, aircrafts) {
     const list = aircrafts.filter((a) => filter.evaluate(a));
     return {
-        ...formatStatsList(`aircraft-${filter.id}`, list),
+        ...formatStatsList(filter.id, list),
         ...filter.getStats?.(aircrafts, list),
     };
 }
@@ -452,7 +455,7 @@ function alertsBuilder(config, filters, processedData, stats) {
             processedData.aircraft
                 .filter((aircraft) => filterMap[key].evaluate(aircraft))
                 .map((aircraft) => {
-                    const id = `aircraft-${key}-${aircraft.hex}`;
+                    const id = `${key}-${aircraft.hex}`;
                     if (alertsActive[id]) {
                         alertsActive[id].timeLast = time;
                         return undefined;
@@ -461,7 +464,7 @@ function alertsBuilder(config, filters, processedData, stats) {
                         id,
                         time,
                         timeFormatted: new Date(time).toISOString(),
-                        type: 'aircraft-' + key,
+                        type: key,
                         ...alertMeta(filterMap[key].format, aircraft),
                         flight: aircraft.flight,
                         timeLast: time,
@@ -484,15 +487,10 @@ function alertsBuilder(config, filters, processedData, stats) {
         alertsInserted: alerts,
         alertsRemoved,
         alertsActive: Object.values(alertsActive),
-        alertsStats: alertsStats(),
+        alertsStats: Object.entries(Object.values(alertsActive).reduce((list, alert) => ({ ...list, [alert.type]: (list[alert.type] || 0) + 1 }), {})).sort(
+            (a, b) => filterMap[a[0]].priority - filterMap[b[0]].priority
+        ),
     };
-}
-
-function alertsStats() {
-    return Object.entries(Object.values(alertsActive).reduce((list, alert) => ({ ...list, [alert.type]: (list[alert.type] || 0) + 1 }), {}))
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([key, count]) => `${key}=${count}`)
-        .join(', ');
 }
 
 function alertMeta(format, aircraft) {
@@ -546,7 +544,9 @@ function stats(config, { flights, alerts, system }) {
             active: alertsActive.length,
             byType: Object.values(alertsActive).reduce((list, alert) => ({ ...list, [alert.type]: (list[alert.type] || 0) + 1 }), {}),
         };
-        console.log(`${time.toISOString()} STATUS/alerts new=${alertsInserted.length}, all=${alertsActive.length}: ${alertsStats}`);
+        console.error(
+            `${time.toISOString()} STATUS/alerts new=${alertsInserted.length}, all=${alertsActive.length}: ${alertsStats.map(([key, count]) => key + '=' + count).join(', ')}`
+        );
     }
     if (system) {
         stats.system = system;

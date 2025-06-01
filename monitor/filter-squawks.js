@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-//const helpers = require('./filter-helpers.js');
+const helpers = require('./filter-helpers.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -711,20 +711,20 @@ module.exports = {
     },
     evaluate: (aircraft) => aircraft.calculated.squawk.isInteresting || aircraft.calculated.squawk.anomalies.length > 0,
     sort: (a, b) => {
-        const aSquawk = a.calculated.squawk,
-            bSquawk = b.calculated.squawk;
-        if (aSquawk.anomalies.length > 0 || bSquawk.anomalies.length > 0) {
-            const aSeverity = severityRank[aSquawk.highestSeverity] || 0,
-                bSeverity = severityRank[bSquawk.highestSeverity] || 0;
+        const a_ = a.calculated.squawk,
+            b_ = b.calculated.squawk;
+        if (a_.anomalies.length > 0 || b_.anomalies.length > 0) {
+            const aSeverity = severityRank[a_.highestSeverity] ?? 0,
+                bSeverity = severityRank[b_.highestSeverity] ?? 0;
             if (aSeverity !== bSeverity) return bSeverity - aSeverity;
         }
-        const aCodePriority = this.codePriorities[aSquawk.code] || 999,
-            bCodePriority = this.codePriorities[bSquawk.code] || 999;
+        const aCodePriority = this.codePriorities[a_.code] ?? Infinity,
+            bCodePriority = this.codePriorities[b_.code] ?? Infinity;
         if (aCodePriority !== bCodePriority) return aCodePriority - bCodePriority;
-        const aTypePriority = Math.min(...aSquawk.matches.map((m) => this.typePriorities[m.type] || 999)),
-            bTypePriority = Math.min(...bSquawk.matches.map((m) => this.typePriorities[m.type] || 999));
+        const aTypePriority = Math.min(...a_.matches.map((m) => this.typePriorities[m.type] ?? Infinity)),
+            bTypePriority = Math.min(...b_.matches.map((m) => this.typePriorities[m.type] ?? Infinity));
         if (aTypePriority !== bTypePriority) return aTypePriority - bTypePriority;
-        return a.calculated.distance - b.calculated.distance;
+        return helpers.sortDistance(a, b);
     },
     getStats: (aircrafts, list) => {
         const byType = list

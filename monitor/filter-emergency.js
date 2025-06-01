@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-//const helpers = require('./filter-helpers.js');
+const helpers = require('./filter-helpers.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -21,7 +21,7 @@ module.exports = {
         if (aircraft.squawk && this.emergencySquawks.includes(aircraft.squawk)) aircraft.calculated.is_emergency = true;
     },
     evaluate: (aircraft) => aircraft.calculated.is_emergency,
-    sort: (a, b) => a.calculated.distance - b.calculated.distance,
+    sort: (a, b) => helpers.sortDistance(a, b),
     format: (aircraft) => ({
         text: `EMERGENCY ${aircraft.emergency || aircraft.squawk}`,
         warn: true,
