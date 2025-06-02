@@ -648,7 +648,7 @@ function detectTrainingCodeValidation(tools, aircraft, squawkMatches) {
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-// detectSquawks
+// function detectSquawks (conf, extra, aircraft) {
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -670,7 +670,7 @@ module.exports = {
         this.conf.detectAnomalies = this.conf.detectAnomalies !== false; // Default true
     },
     preprocess: (aircraft) => {
-        aircraft.calculated.squawk = { code: aircraft.squawk, hasAnomalies: false, matches: [], isInteresting: false };
+        aircraft.calculated.squawk = { hasAnomalies: false, isInteresting: false };
         if (aircraft.squawk === undefined || !this.extra.data?.squawks) return;
 
         const matches = this.extra.data.squawks.findByCode(aircraft.squawk);
@@ -724,8 +724,8 @@ module.exports = {
                 bSeverity = b_.hasAnomalies ? severityRank[b_.highestSeverity] : 0;
             if (aSeverity !== bSeverity) return bSeverity - aSeverity;
         }
-        const aCodePriority = this.conf.codePriorities[a_.code] ?? Infinity,
-            bCodePriority = this.conf.codePriorities[b_.code] ?? Infinity;
+        const aCodePriority = this.conf.codePriorities[a.squawk] ?? Infinity,
+            bCodePriority = this.conf.codePriorities[b.squawk] ?? Infinity;
         if (aCodePriority !== bCodePriority) return aCodePriority - bCodePriority;
         const aTypePriority = Math.min(...a_.matches.map((m) => this.conf.typePriorities[m.type] ?? Infinity)),
             bTypePriority = Math.min(...b_.matches.map((m) => this.conf.typePriorities[m.type] ?? Infinity));
@@ -735,7 +735,7 @@ module.exports = {
         const byType = list
             .flatMap((a) => a.calculated.squawk.matches.map((m) => m.type))
             .reduce((counts, type) => ({ ...counts, [type]: (counts[type] || 0) + 1 }), {});
-        const byCode = list.map((a) => a.calculated.squawk.code).reduce((counts, code) => ({ ...counts, [code]: (counts[code] || 0) + 1 }), {});
+        const byCode = list.map((a) => a.squawk).reduce((counts, squawk) => ({ ...counts, [squawk]: (counts[squawk] || 0) + 1 }), {});
         const withAnomalies = list.filter((a) => a.calculated.squawk.hasAnomalies);
         const anomalyTypes = withAnomalies
             .flatMap((a) => a.calculated.squawk.anomalies.map((an) => an.type))
@@ -755,10 +755,9 @@ module.exports = {
                 count = squawk.anomalies.length;
             const suffix = count > 1 ? ` (+${count - 1} more)` : '';
             return {
-                text: `squawk ${squawk.code} anomaly: ${primary.description}${suffix}`,
+                text: `squawk ${aircraft.squawk} anomaly: ${primary.description}${suffix}`,
                 warn: squawk.highestSeverity === 'high',
                 squawkInfo: {
-                    code: squawk.code,
                     anomalies: squawk.anomalies,
                     matches: squawk.matches,
                 },
@@ -770,10 +769,9 @@ module.exports = {
             const suffix = count > 1 ? ` (+${count - 1} more)` : '';
             const description = primary.description?.[0] || primary.type || 'Unknown';
             return {
-                text: `squawk ${squawk.code}: ${description}${suffix}`,
-                warn: this.conf.codePriorities[squawk.code] <= 3 || this.conf.typePriorities[primary.type] <= 3,
+                text: `squawk ${aircraft.squawk}: ${description}${suffix}`,
+                warn: this.conf.codePriorities[aircraft.squawk] <= 3 || this.conf.typePriorities[primary.type] <= 3,
                 squawkInfo: {
-                    code: squawk.code,
                     type: primary.type,
                     description,
                     matches: squawk.matches,
@@ -781,16 +779,16 @@ module.exports = {
             };
         }
         return {
-            text: `squawk ${squawk.code}: unrecognized code`,
+            text: `squawk ${aircraft.squawk}: unrecognized code`,
             warn: false,
-            squawkInfo: { code: squawk.code },
+            squawkInfo: {},
         };
     },
     debug: (type, aircraft) => {
         const { squawk } = aircraft.calculated;
         if (type == 'sorting') {
-            if (squawk.hasAnomalies) return `anomaly=${squawk.highestSeverity}, code=${squawk.code}`;
-            return `code=${squawk.code}, type=${squawk.matches[0]?.type || 'unknown'}`;
+            if (squawk.hasAnomalies) return `anomaly=${squawk.highestSeverity}`;
+            return `type=${squawk.matches[0]?.type || 'unknown'}`;
         }
     },
 };
