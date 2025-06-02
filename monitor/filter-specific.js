@@ -4,6 +4,14 @@
 //const helpers = require('./filter-helpers.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function detectSpecific(conf, aircraft) {
+    const matches = conf.flightsCompiled.filter((p) => aircraft?.[p.field] && p.regex.test(aircraft[p.field])).map(({ regex, ...rest }) => rest); // eslint-disable-line no-unused-vars
+    if (matches.length === 0) return undefined;
+    return { isSpecific: true, matches };
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 module.exports = {
@@ -13,7 +21,7 @@ module.exports = {
     config: (conf, extra) => {
         this.conf = conf;
         this.extra = extra;
-        this.flights = this.conf.flights || [
+        this.conf.flights = this.conf.flights || [
             { field: 'flight', pattern: '^(TKF)[0-9]', category: 'royalty', description: "The King's Flight" },
             //
             { field: 'flight', pattern: '^(EXEC|STATE|GOV)[0-9]', category: 'government', description: 'Government flight' },
@@ -36,8 +44,8 @@ module.exports = {
             { field: 'category', pattern: 'B7', category: 'special-interest', description: 'Space aircraft' },
             { field: 'category', pattern: '[CD][0-9]', category: 'special-interest', description: 'Special aircraft' },
         ];
-        this.flightsCompiled = this.flights.map((p) => ({ ...p, regex: new RegExp(p.pattern, 'i') }));
-        this.categoryPriorities = this.conf.priorities || {
+        this.conf.flightsCompiled = this.conf.flights.map((p) => ({ ...p, regex: new RegExp(p.pattern, 'i') }));
+        this.conf.priorities = this.conf.priorities || {
             government: 1,
             'emergency-services': 2,
             'military-transport': 3,
@@ -51,17 +59,14 @@ module.exports = {
     },
     preprocess: (aircraft) => {
         aircraft.calculated.specific = { isSpecific: false };
-        const matches = this.flightsCompiled.filter((p) => aircraft?.[p.field] && p.regex.test(aircraft[p.field])).map(({ regex, ...rest }) => rest); // eslint-disable-line no-unused-vars
-        if (matches.length > 0) aircraft.calculated.specific = { isSpecific: true, matches };
+        const specific = detectSpecific(this.conf, aircraft);
+        if (specific) aircraft.calculated.specific = specific;
     },
     evaluate: (aircraft) => aircraft.calculated.specific.isSpecific,
     sort: (a, b) => {
         const a_ = a.calculated.specific,
             b_ = b.calculated.specific;
-        if (!a_.isSpecific) return 1;
-        if (!b_.isSpecific) return -1;
-        //
-        return this.categoryPriorities[a_.matches[0].category] - this.categoryPriorities[b_.matches[0].category];
+        return this.conf.priorities[a_.matches[0].category] - this.conf.priorities[b_.matches[0].category];
     },
     getStats: (aircrafts, list) => {
         const byCategory = list
@@ -87,6 +92,10 @@ module.exports = {
                 description: matchPrimary.description,
             },
         };
+    },
+    debug: (type, aircraft) => {
+        const { specific } = aircraft.calculated;
+        if (type == 'sorting') return `${specific.matches[0].category} (pri=${this.conf.priorities[specific.matches[0].category]})`;
     },
 };
 

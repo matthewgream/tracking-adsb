@@ -4,6 +4,18 @@
 const helpers = require('./filter-helpers.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function detectOverhead(conf, extra, aircraft) {
+    const { lat, lon, alt } = extra.data.location;
+    const overhead = helpers.calculateOverheadTrajectory(lat, lon, alt || 0, aircraft);
+    if (!overhead?.willIntersectOverhead) return undefined;
+    if (aircraft.calculated?.distance !== undefined && aircraft.calculated.distance > conf.distance) return undefined;
+    if (Math.abs(overhead.overheadDistance) > conf.radius || Math.abs(overhead.overheadSeconds) > conf.time || overhead.overheadAltitude > conf.altitude)
+        return undefined;
+    return overhead;
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 module.exports = {
@@ -16,25 +28,13 @@ module.exports = {
     },
     preprocess: (aircraft) => {
         aircraft.calculated.overhead = { willIntersectOverhead: false };
-        const { lat, lon, alt } = this.extra.data.location;
-        const overhead = helpers.calculateOverheadTrajectory(lat, lon, alt || 0, aircraft);
-        if (overhead?.willIntersectOverhead) {
-            if (
-                Math.abs(overhead.overheadDistance) < this.conf.radius &&
-                Math.abs(overhead.overheadSeconds) < this.conf.time &&
-                overhead.overheadAltitude < this.conf.altitude &&
-                aircraft.calculated?.distance < this.conf.distance
-            )
-                aircraft.calculated.overhead = overhead;
-        }
+        const overhead = detectOverhead(this.conf, this.extra, aircraft);
+        if (overhead) aircraft.calculated.overhead = overhead;
     },
     evaluate: (aircraft) => aircraft.calculated.overhead.willIntersectOverhead,
     sort: (a, b) => {
         const a_ = a.calculated.overhead,
             b_ = b.calculated.overhead;
-        if (!a_.willIntersectOverhead) return 1;
-        if (!b_.willIntersectOverhead) return -1;
-        //
         return a_.overheadTime - b_.overheadTime;
     },
     format: (aircraft) => {
@@ -64,6 +64,10 @@ module.exports = {
                 verticalAngle,
             },
         };
+    },
+    debug: (type, aircraft) => {
+        const { overhead } = aircraft.calculated;
+        if (type == 'sorting') return `${overhead.overheadFuture ? 'future' : 'past'}, ${overhead.overheadSeconds}s`;
     },
 };
 

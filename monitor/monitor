@@ -3,9 +3,6 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const { hostname } = require('os');
-const configFile = process.argv[2] || `./config.${hostname}.js`;
-
 const CACHE_EXPIRY_TIME = 5 * 60;
 const ALERT_EXPIRY_TIME = 5 * 60;
 const CYCLE_SCAN_TIME = 30;
@@ -269,25 +266,73 @@ function filterInit(config, extra) {
 
 async function filterAircraft(filters, aircraftList) {
     const { filterSet } = filters;
-    const filtered = [];
+
     let count = 0,
         cycle = 50;
+    const filtered = [];
     for (const aircraft of aircraftList) {
         for (const filter of filterSet) filter.preprocess(aircraft, aircraftList);
-        if (filterSet.some((filter) => filter.evaluate(aircraft))) filtered.push(aircraft);
+        aircraft.calculated._matchedFilters = filterSet.filter((filter) => filter.evaluate(aircraft));
+        if (aircraft.calculated._matchedFilters.length > 0) filtered.push(aircraft);
         if (++count % cycle === 0) await do_yield();
     }
     for (const filter of filterSet) if (filter.postprocess) filter.postprocess();
-    return filtered.sort((a, b) => {
-        const aFilters = filterSet.filter((f) => f.evaluate(a)),
-            bFilters = filterSet.filter((f) => f.evaluate(b));
-        if (aFilters.length === 0 || bFilters.length === 0) return helpers.sortDistance(a, b); // should not happen
-        const aHighestPriority = Math.min(...aFilters.map((f) => f.priority)),
-            bHighestPriority = Math.min(...bFilters.map((f) => f.priority));
-        if (aHighestPriority !== bHighestPriority) return aHighestPriority - bHighestPriority;
-        const result = filterSet.find((f) => f.priority === aHighestPriority).sort(a, b);
-        return result == 0 ? helpers.sortDistance(a, b) : result;
+
+    const sorted = filtered.sort((a, b) => {
+        const aFilters = a.calculated._matchedFilters,
+            bFilters = b.calculated._matchedFilters;
+        const aPriority = Math.min(...aFilters.map((f) => f.priority)),
+            bPriority = Math.min(...bFilters.map((f) => f.priority));
+
+        if (aPriority !== bPriority) {
+            if (config.debug?.sorting) console.error(`[SORT] ${a.flight} vs ${b.flight}: priority ${aPriority} vs ${bPriority} => ${aPriority - bPriority}`);
+            return aPriority - bPriority;
+        }
+
+        const commonFilters = aFilters.filter((f) => f.priority === aPriority && bFilters.some((bf) => bf.id === f.id && bf.priority === aPriority));
+        if (commonFilters.length > 0) {
+            for (const filter of commonFilters) {
+                const result = filter.sort(a, b);
+                if (result !== 0) {
+                    if (config.debug?.sorting) console.error(`[SORT] ${a.flight} vs ${b.flight}: ${filter.id} sort => ${result}`);
+                    return result;
+                }
+            }
+            if (config.debug?.sorting)
+                console.error(`[SORT] ${a.flight} vs ${b.flight}: common filters [${commonFilters.map((f) => f.id).join(',')}] all returned 0, using distance`);
+        } else {
+            if (config.debug?.sorting) {
+                const aFilterNames = aFilters
+                        .filter((f) => f.priority === aPriority)
+                        .map((f) => f.id)
+                        .join(','),
+                    bFilterNames = bFilters
+                        .filter((f) => f.priority === bPriority)
+                        .map((f) => f.id)
+                        .join(',');
+                console.error(
+                    `[SORT] ${a.flight} vs ${b.flight}: no common filters at priority ${aPriority} (${aFilterNames} vs ${bFilterNames}), using distance`
+                );
+            }
+        }
+        return helpers.sortDistance(a, b);
     });
+
+    if (config.debug?.sorting && sorted.length > 0) {
+        console.error('\n[SORT] Final order:');
+        sorted.slice(0, 10).forEach((aircraft, idx) => {
+            const filters = aircraft.calculated._matchedFilters.map((f) => `${f.id}:${f.priority}`).join(',');
+            const distance = aircraft.calculated.distance?.toFixed(1) || '?';
+            console.error(`[SORT] ${idx + 1}. ${aircraft.flight} - filters: [${filters}] - ${distance}km`);
+            aircraft.calculated._matchedFilters.forEach((filter) => {
+                const debugInfo = filter?.debug('sorting', aircraft);
+                if (debugInfo) console.error(`[SORT]    └─ ${filter.id}: ${debugInfo}`);
+            });
+        });
+        console.error('');
+    }
+
+    return sorted;
 }
 
 function _filterStats(filter, aircrafts) {
@@ -598,9 +643,21 @@ function init(config) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 console.error('***');
+
+//
+const args = process.argv.slice(2).filter((arg) => !arg.startsWith('--'));
+const { hostname } = require('os');
+const configFile = args[0] || `./config.${hostname}.js`;
+const debugSort = process.argv.includes('--debug-sort');
 console.error(`config: ${configFile}`);
 const config = require(configFile);
+if (debugSort) {
+    config.debug = config.debug || {};
+    config.debug.sorting = true;
+}
 console.error('config:', config);
+//
+
 const system = init(config);
 system.stats = {
     started: new Date().toISOString(),

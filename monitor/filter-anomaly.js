@@ -392,6 +392,29 @@ function calculateVariables(aircraft) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function detectAnomaly(aircraft) {
+    if (aircraft.hex === undefined) return undefined;
+    const variables = calculateVariables(aircraft);
+    const anomalies = [
+        detectHighSpeedLowAltitude(HIGH_SPEED_LOW_ALTITUDE_CONFIG, aircraft),
+        detectLowSpeedHighAltitude(LOW_SPEED_HIGH_ALTITUDE_CONFIG, aircraft),
+        detectTemperatureAnomaly(TEMPERATURE_ANOMALY_CONFIG, aircraft),
+        detectAltitudeOscillation(ALTITUDE_OSCILLATION_CONFIG, variables.altitudes),
+        detectAltitudeDeviation(ALTITUDE_DEVIATION_CONFIG, aircraft, variables.altitudes),
+        detectExtremeVerticalRate(EXTREME_VERTICAL_RATE_CONFIG, aircraft),
+        detectRapidVerticalRateChange(RAPID_VERTICAL_RATE_CHANGE_CONFIG, aircraft, variables.verticalRates),
+        detectRapidSpeedChange(RAPID_SPEED_CHANGE_CONFIG, variables.speeds),
+    ].filter(Boolean);
+    if (anomalies.length === 0) return undefined;
+    return {
+        hasAnomaly: true,
+        anomalies,
+        highestSeverity: anomalies.reduce((highest, current) => (severityRank[current.severity] > severityRank[highest] ? current.severity : highest), 'low'),
+    };
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const severityRank = { high: 3, medium: 2, low: 1 };
@@ -407,35 +430,13 @@ module.exports = {
     },
     preprocess: (aircraft) => {
         aircraft.calculated.anomaly = { hasAnomaly: false };
-        if (!aircraft.hex) return;
-        const variables = calculateVariables(aircraft);
-        const anomalies = [
-            detectHighSpeedLowAltitude(HIGH_SPEED_LOW_ALTITUDE_CONFIG, aircraft),
-            detectLowSpeedHighAltitude(LOW_SPEED_HIGH_ALTITUDE_CONFIG, aircraft),
-            detectTemperatureAnomaly(TEMPERATURE_ANOMALY_CONFIG, aircraft),
-            detectAltitudeOscillation(ALTITUDE_OSCILLATION_CONFIG, variables.altitudes),
-            detectAltitudeDeviation(ALTITUDE_DEVIATION_CONFIG, aircraft, variables.altitudes),
-            detectExtremeVerticalRate(EXTREME_VERTICAL_RATE_CONFIG, aircraft),
-            detectRapidVerticalRateChange(RAPID_VERTICAL_RATE_CHANGE_CONFIG, aircraft, variables.verticalRates),
-            detectRapidSpeedChange(RAPID_SPEED_CHANGE_CONFIG, variables.speeds),
-        ].filter(Boolean);
-        if (anomalies.length > 0)
-            aircraft.calculated.anomaly = {
-                hasAnomaly: true,
-                anomalies,
-                highestSeverity: anomalies.reduce(
-                    (highest, current) => (severityRank[current.severity] > severityRank[highest] ? current.severity : highest),
-                    'low'
-                ),
-            };
+        const anomaly = detectAnomaly(aircraft);
+        if (anomaly) aircraft.calculated.anomaly = anomaly;
     },
     evaluate: (aircraft) => aircraft.calculated.anomaly.hasAnomaly,
     sort: (a, b) => {
         const a_ = a.calculated.anomaly,
             b_ = b.calculated.anomaly;
-        if (!a_.hasAnomaly) return 1;
-        if (!b_.hasAnomaly) return -1;
-        //
         return severityRank[b_.highestSeverity] - severityRank[a_.highestSeverity];
     },
     getStats: (aircrafts, list) => {
@@ -471,6 +472,10 @@ module.exports = {
                 count,
             },
         };
+    },
+    debug: (type, aircraft) => {
+        const { anomaly } = aircraft.calculated;
+        if (type == 'sorting') return `severity=${anomaly.highestSeverity}, count=${anomaly.anomalies.length}`;
     },
 };
 

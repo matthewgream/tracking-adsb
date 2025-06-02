@@ -229,6 +229,26 @@ function calculateVariables(aircraft) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function detectWeather(aircraft) {
+    if (!aircraft.hex) return undefined;
+    const variables = calculateVariables(aircraft);
+    const conditions = [
+        detectIcingConditions(ICING_CONDITIONS_CONFIG, aircraft),
+        detectSevereIcingRisk(SEVERE_ICING_CONFIG, aircraft),
+        detectTurbulence(TURBULENCE_CONFIG, variables.verticalRates),
+        detectStrongWinds(STRONG_WINDS_CONFIG, aircraft),
+        detectTemperatureInversion(TEMPERATURE_INVERSION_CONFIG, aircraft),
+    ].filter(Boolean);
+    if (conditions.length === 0) return undefined;
+    return {
+        inWeatherOperation: true,
+        conditions,
+        highestSeverity: conditions.reduce((highest, current) => (severityRank[current.severity] > severityRank[highest] ? current.severity : highest), 'low'),
+    };
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const severityRank = { high: 3, medium: 2, low: 1 };
@@ -244,33 +264,14 @@ module.exports = {
     },
     preprocess: (aircraft) => {
         aircraft.calculated.weather = { inWeatherOperation: false };
-        if (!aircraft.hex) return;
-        const variables = calculateVariables(aircraft);
-        const conditions = [
-            detectIcingConditions(ICING_CONDITIONS_CONFIG, aircraft),
-            detectSevereIcingRisk(SEVERE_ICING_CONFIG, aircraft),
-            detectTurbulence(TURBULENCE_CONFIG, variables.verticalRates),
-            detectStrongWinds(STRONG_WINDS_CONFIG, aircraft),
-            detectTemperatureInversion(TEMPERATURE_INVERSION_CONFIG, aircraft),
-        ].filter(Boolean);
-        if (conditions.length > 0)
-            aircraft.calculated.weather = {
-                inWeatherOperation: true,
-                conditions,
-                highestSeverity: conditions.reduce(
-                    (highest, current) => (severityRank[current.severity] > severityRank[highest] ? current.severity : highest),
-                    'low'
-                ),
-            };
+        const weather = detectWeather(aircraft);
+        if (weather) aircraft.calculated.weather = weather;
     },
     evaluate: (aircraft) => aircraft.calculated.weather.inWeatherOperation,
     sort: (a, b) => {
         const a_ = a.calculated.weather,
             b_ = b.calculated.weather;
-        if (!a_.inWeatherOperation) return 1;
-        if (!b_.inWeatherOperation) return -1;
-        //
-        return severityRank[a_.highestSeverity] - severityRank[b_.highestSeverity];
+        return severityRank[b_.highestSeverity] - severityRank[a_.highestSeverity];
     },
     getStats: (aircrafts, list) => {
         const byCondition = list
@@ -305,6 +306,10 @@ module.exports = {
                 count,
             },
         };
+    },
+    debug: (type, aircraft) => {
+        const { weather } = aircraft.calculated;
+        if (type == 'sorting') return `severity=${weather.highestSeverity}, count=${weather.conditions.length}`;
     },
 };
 

@@ -309,15 +309,13 @@ module.exports = {
     },
     preprocess: (aircraft) => {
         aircraft.calculated.loitering = { isLoitering: false };
-        aircraft.calculated.loitering = detectLoitering(this.conf, aircraft);
+        const loitering = detectLoitering(this.conf, aircraft);
+        if (loitering) aircraft.calculated.loitering = loitering;
     },
     evaluate: (aircraft) => aircraft.calculated.loitering.isLoitering,
     sort: (a, b) => {
         const a_ = a.calculated.loitering,
             b_ = b.calculated.loitering;
-        if (!a_.isLoitering) return 1;
-        if (!b_.isLoitering) return -1;
-        //
         if (a_.score !== b_.score) return b_.score - a_.score;
         return b_.duration - a_.duration;
     },
@@ -354,6 +352,10 @@ module.exports = {
                 score: loitering.score,
             },
         };
+    },
+    debug: (type, aircraft) => {
+        const { loitering } = aircraft.calculated;
+        if (type == 'sorting') return `score=${loitering.score.toFixed(2)}, duration=${loitering.duration}min`;
     },
 };
 

@@ -645,6 +645,11 @@ function detectTrainingCodeValidation(tools, aircraft, squawkMatches) {
     }
     return undefined;
 }
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+// detectSquawks
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -657,26 +662,25 @@ module.exports = {
     config: (conf, extra) => {
         this.conf = conf || {};
         this.extra = extra;
-        this.squawkData = extra.data?.squawks;
-        if (this.squawkData === undefined) console.error('filter-squawks: squawk data not available');
-        this.typePriorities = this.conf.typePriorities || DEFAULT_TYPE_PRIORITIES;
-        this.codePriorities = this.conf.codePriorities || DEFAULT_CODE_PRIORITIES;
-        this.watchCodes = new Set(this.conf.watchCodes || Object.keys(DEFAULT_CODE_PRIORITIES));
-        this.watchTypes = new Set(this.conf.watchTypes || ['emergency', 'sar', 'hems', 'police', 'royal', 'military', 'special']);
-        this.detectAnomalies = this.conf.detectAnomalies !== false; // Default true
+        if (this.extra.data?.squawks === undefined) console.error('filter-squawks: squawk data not available');
+        this.conf.typePriorities = this.conf.typePriorities || DEFAULT_TYPE_PRIORITIES;
+        this.conf.codePriorities = this.conf.codePriorities || DEFAULT_CODE_PRIORITIES;
+        this.conf.watchCodes = new Set(this.conf.watchCodes || Object.keys(DEFAULT_CODE_PRIORITIES));
+        this.conf.watchTypes = new Set(this.conf.watchTypes || ['emergency', 'sar', 'hems', 'police', 'royal', 'military', 'special']);
+        this.conf.detectAnomalies = this.conf.detectAnomalies !== false; // Default true
     },
     preprocess: (aircraft) => {
         aircraft.calculated.squawk = { code: aircraft.squawk, hasAnomalies: false, matches: [], isInteresting: false };
-        if (aircraft.squawk === undefined || !this.squawkData) return;
+        if (aircraft.squawk === undefined || !this.extra.data?.squawks) return;
 
-        const matches = this.squawkData.findByCode(aircraft.squawk);
+        const matches = this.extra.data.squawks.findByCode(aircraft.squawk);
         aircraft.calculated.squawk.matches = matches;
 
-        const isWatchedCode = this.watchCodes.has(aircraft.squawk),
-            isWatchedType = matches.some((match) => this.watchTypes.has(match.type));
+        const isWatchedCode = this.conf.watchCodes.has(aircraft.squawk),
+            isWatchedType = matches.some((match) => this.conf.watchTypes.has(match.type));
         aircraft.calculated.squawk.isInteresting = isWatchedCode || isWatchedType;
 
-        if (this.detectAnomalies && matches.length > 0) {
+        if (this.conf.detectAnomalies && matches.length > 0) {
             const anomalies = [
                 detectGroundTestingMismatch(this.extra, aircraft, matches),
                 detectMilitarySquawkMismatch(this.extra, aircraft, matches),
@@ -702,34 +706,29 @@ module.exports = {
                 detectSAROperationsValidation(this.extra, aircraft, matches),
                 detectTrainingCodeValidation(this.extra, aircraft, matches),
             ].filter(Boolean);
-            if (anomalies.length > 0) {
-                aircraft.calculated.squawk.hasAnomalies = true;
-                aircraft.calculated.squawk.anomalies = anomalies;
-                aircraft.calculated.squawk.highestSeverity = anomalies.reduce(
-                    (highest, current) => (severityRank[current.severity] > severityRank[highest] ? current.severity : highest),
-                    'low'
-                );
-            }
+            if (anomalies.length === 0) return;
+            aircraft.calculated.squawk.hasAnomalies = true;
+            aircraft.calculated.squawk.anomalies = anomalies;
+            aircraft.calculated.squawk.highestSeverity = anomalies.reduce(
+                (highest, current) => (severityRank[current.severity] > severityRank[highest] ? current.severity : highest),
+                'low'
+            );
         }
     },
     evaluate: (aircraft) => aircraft.calculated.squawk.isInteresting || aircraft.calculated.squawk.hasAnomalies,
     sort: (a, b) => {
         const a_ = a.calculated.squawk,
             b_ = b.calculated.squawk;
-        if (!a_.hasAnomalies && !a_.isInteresting) return 1;
-        if (!b_.hasAnomalies && !b_.isInteresting) return -1;
-        //
-        // XXX
-        if (a_.anomalies.length > 0 || b_.anomalies.length > 0) {
-            const aSeverity = severityRank[a_.highestSeverity] ?? 0,
-                bSeverity = severityRank[b_.highestSeverity] ?? 0;
+        if (a_.hasAnomalies || b_.hasAnomalies) {
+            const aSeverity = a_.hasAnomalies ? severityRank[a_.highestSeverity] : 0,
+                bSeverity = b_.hasAnomalies ? severityRank[b_.highestSeverity] : 0;
             if (aSeverity !== bSeverity) return bSeverity - aSeverity;
         }
-        const aCodePriority = this.codePriorities[a_.code] ?? Infinity,
-            bCodePriority = this.codePriorities[b_.code] ?? Infinity;
+        const aCodePriority = this.conf.codePriorities[a_.code] ?? Infinity,
+            bCodePriority = this.conf.codePriorities[b_.code] ?? Infinity;
         if (aCodePriority !== bCodePriority) return aCodePriority - bCodePriority;
-        const aTypePriority = Math.min(...a_.matches.map((m) => this.typePriorities[m.type] ?? Infinity)),
-            bTypePriority = Math.min(...b_.matches.map((m) => this.typePriorities[m.type] ?? Infinity));
+        const aTypePriority = Math.min(...a_.matches.map((m) => this.conf.typePriorities[m.type] ?? Infinity)),
+            bTypePriority = Math.min(...b_.matches.map((m) => this.conf.typePriorities[m.type] ?? Infinity));
         return aTypePriority - bTypePriority;
     },
     getStats: (aircrafts, list) => {
@@ -737,7 +736,7 @@ module.exports = {
             .flatMap((a) => a.calculated.squawk.matches.map((m) => m.type))
             .reduce((counts, type) => ({ ...counts, [type]: (counts[type] || 0) + 1 }), {});
         const byCode = list.map((a) => a.calculated.squawk.code).reduce((counts, code) => ({ ...counts, [code]: (counts[code] || 0) + 1 }), {});
-        const withAnomalies = list.filter((a) => a.calculated.squawk.anomalies.length > 0);
+        const withAnomalies = list.filter((a) => a.calculated.squawk.hasAnomalies);
         const anomalyTypes = withAnomalies
             .flatMap((a) => a.calculated.squawk.anomalies.map((an) => an.type))
             .reduce((counts, type) => ({ ...counts, [type]: (counts[type] || 0) + 1 }), {});
@@ -751,7 +750,7 @@ module.exports = {
     },
     format: (aircraft) => {
         const { squawk } = aircraft.calculated;
-        if (squawk.anomalies.length > 0) {
+        if (squawk.hasAnomalies) {
             const [primary] = squawk.anomalies,
                 count = squawk.anomalies.length;
             const suffix = count > 1 ? ` (+${count - 1} more)` : '';
@@ -772,7 +771,7 @@ module.exports = {
             const description = primary.description?.[0] || primary.type || 'Unknown';
             return {
                 text: `squawk ${squawk.code}: ${description}${suffix}`,
-                warn: this.codePriorities[squawk.code] <= 3 || this.typePriorities[primary.type] <= 3,
+                warn: this.conf.codePriorities[squawk.code] <= 3 || this.conf.typePriorities[primary.type] <= 3,
                 squawkInfo: {
                     code: squawk.code,
                     type: primary.type,
@@ -786,6 +785,13 @@ module.exports = {
             warn: false,
             squawkInfo: { code: squawk.code },
         };
+    },
+    debug: (type, aircraft) => {
+        const { squawk } = aircraft.calculated;
+        if (type == 'sorting') {
+            if (squawk.hasAnomalies) return `anomaly=${squawk.highestSeverity}, code=${squawk.code}`;
+            return `code=${squawk.code}, type=${squawk.matches[0]?.type || 'unknown'}`;
+        }
     },
 };
 

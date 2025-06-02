@@ -4,6 +4,14 @@
 //const helpers = require('./filter-helpers.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function detectMilitary(conf, aircraft) {
+    if (aircraft.flight && conf.militaryPrefixes.some((prefix) => aircraft.flight.trim().startsWith(prefix))) return { isMilitary: true };
+    if (aircraft.flight && /^[A-Z]{4}\d{2}$/.test(aircraft.flight)) return { isMilitary: true };
+    return undefined;
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 module.exports = {
@@ -13,7 +21,7 @@ module.exports = {
     config: (conf, extra) => {
         this.conf = conf;
         this.extra = extra;
-        this.militaryPrefixes = [
+        this.conf.militaryPrefixes = this.conf.militaryPrefixes || [
             'RCH',
             'PLF',
             'RRR',
@@ -74,9 +82,8 @@ module.exports = {
     },
     preprocess: (aircraft) => {
         aircraft.calculated.military = { isMilitary: false };
-        if (aircraft.flight && this.militaryPrefixes.some((prefix) => aircraft.flight.trim().startsWith(prefix)))
-            aircraft.calculated.military.isMilitary = true;
-        if (aircraft.flight && /^[A-Z]{4}\d{2}$/.test(aircraft.flight)) aircraft.calculated.military.isMilitary = true;
+        const military = detectMilitary(this.conf, aircraft);
+        if (military) aircraft.calculated.military = military;
     },
     evaluate: (aircraft) => aircraft.calculated.military.isMilitary,
     sort: (_a, _b) => 0,
@@ -84,6 +91,9 @@ module.exports = {
         text: `military`,
         warn: true,
     }),
+    debug: (type, _aircraft) => {
+        if (type == 'sorting') return undefined;
+    },
 };
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
