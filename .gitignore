@@ -1,7 +1,9 @@
 config.*.js
 !config.js
+airports-data.json
 airports-data.*.js
 !airports-data.js
 eslint.config.mjs
 node_modules
 package-lock.json
+*.csv
