@@ -2,6 +2,13 @@
 
 const fs = require('fs');
 const csv = require('csv-parse/sync');
+const https = require('https');
+
+const DATA_URLS = {
+    'airports.csv': 'https://davidmegginson.github.io/ourairports-data/airports.csv',
+    'runways.csv': 'https://davidmegginson.github.io/ourairports-data/runways.csv',
+    'airport-frequencies.csv': 'https://davidmegginson.github.io/ourairports-data/airport-frequencies.csv',
+};
 
 const TYPE_MAPPINGS = {
     airports: {
@@ -89,9 +96,47 @@ const VALIDATORS = {
     },
 };
 
+function fetchFile(url) {
+    return new Promise((resolve, reject) => {
+        console.error(`Fetching from ${url}...`);
+        https
+            .get(url, (response) => {
+                if (response.statusCode !== 200) {
+                    reject(new Error(`HTTP ${response.statusCode} for ${url}`));
+                    return;
+                }
+                let data = '';
+                response.on('data', (chunk) => (data += chunk));
+                response.on('end', () => resolve(data));
+                response.on('error', (err) => reject(err));
+            })
+            .on('error', (err) => reject(err));
+    });
+}
+
+async function getFileContent(filename) {
+    if (fs.existsSync(filename)) {
+        console.error(`Reading local file: ${filename}`);
+        return fs.readFileSync(filename, 'utf8');
+    } else {
+        console.error(`Local file not found: ${filename}`);
+        if (DATA_URLS[filename]) {
+            try {
+                const content = await fetchFile(DATA_URLS[filename]);
+                console.error(`Successfully fetched ${filename} from remote URL`);
+                return content;
+            } catch (e) {
+                throw new Error(`Failed to fetch ${filename}: ${e.message}`);
+            }
+        } else {
+            throw new Error(`No URL configured for ${filename}`);
+        }
+    }
+}
+
 function convertRow(row, mapping) {
     const converted = {};
-    for (const [field, type] of Object.entries(mapping)) {
+    for (const [field, type] of Object.entries(mapping))
         if (row.hasOwnProperty(field)) {
             const validator = VALIDATORS[type];
             if (!validator) {
@@ -99,81 +144,92 @@ function convertRow(row, mapping) {
                 converted[field] = row[field];
             } else converted[field] = validator(row[field]);
         }
-    }
     return converted;
 }
 
-function readCSV(filename, mapping) {
+async function readCSV(filename, mapping) {
     try {
-        const fileContent = fs.readFileSync(filename, 'utf8');
+        const fileContent = await getFileContent(filename);
         const records = csv.parse(fileContent, {
             columns: true,
             skip_empty_lines: true,
             relax_quotes: true,
             relax_column_count: true,
         });
-        console.error(`Reading ${filename}: ${records.length} records`);
+        console.error(`Parsed ${filename}: ${records.length} records`);
         return records.map((row) => convertRow(row, mapping));
     } catch (error) {
-        console.error(`Error reading ${filename}: ${error.message}`);
+        console.error(`Error processing ${filename}: ${error.message}`);
         return [];
     }
 }
 
-function main() {
-    const airports = readCSV('airports.csv', TYPE_MAPPINGS.airports);
-    const runways = readCSV('runways.csv', TYPE_MAPPINGS.runways);
-    const frequencies = readCSV('airport-frequencies.csv', TYPE_MAPPINGS.frequencies);
+async function main() {
+    try {
+        const airports = await readCSV('airports.csv', TYPE_MAPPINGS.airports);
 
-    const runwaysByAirport = {};
-    const frequenciesByAirport = {};
+        const runways = await readCSV('runways.csv', TYPE_MAPPINGS.runways);
+        const runwaysByAirport = {};
+        runways.forEach((runway) => {
+            const ident = runway.airport_ident;
+            if (!runwaysByAirport[ident]) runwaysByAirport[ident] = [];
+            runwaysByAirport[ident].push(runway);
+        });
 
-    runways.forEach((runway) => {
-        const ident = runway.airport_ident;
-        if (!runwaysByAirport[ident]) runwaysByAirport[ident] = [];
-        runwaysByAirport[ident].push(runway);
-    });
+        const frequencies = await readCSV('airport-frequencies.csv', TYPE_MAPPINGS.frequencies);
+        const frequenciesByAirport = {};
+        frequencies.forEach((freq) => {
+            const ident = freq.airport_ident;
+            if (!frequenciesByAirport[ident]) frequenciesByAirport[ident] = [];
+            frequenciesByAirport[ident].push(freq);
+        });
 
-    frequencies.forEach((freq) => {
-        const ident = freq.airport_ident;
-        if (!frequenciesByAirport[ident]) frequenciesByAirport[ident] = [];
-        frequenciesByAirport[ident].push(freq);
-    });
+        const masterStructure = {};
+        airports.forEach((airport) => {
+            const ident = airport.ident;
+            masterStructure[ident] = {
+                ...airport,
+                runways: runwaysByAirport[ident] || [],
+                frequencies: frequenciesByAirport[ident] || [],
+            };
+        });
 
-    const masterStructure = {};
-    airports.forEach((airport) => {
-        const ident = airport.ident;
-        masterStructure[ident] = {
-            ...airport,
-            runways: runwaysByAirport[ident] || [],
-            frequencies: frequenciesByAirport[ident] || [],
-        };
-    });
+        console.error('\nProcessing complete:');
+        console.error(`- Airports: ${Object.keys(masterStructure).length}`);
+        console.error(`- Runways: ${runways.length}`);
+        console.error(`- Frequencies: ${frequencies.length}`);
+        let airportsWithRunways = 0,
+            airportsWithFrequencies = 0;
+        Object.values(masterStructure).forEach((airport) => {
+            if (airport.runways.length > 0) airportsWithRunways++;
+            if (airport.frequencies.length > 0) airportsWithFrequencies++;
+        });
+        console.error(`- Airports with runways: ${airportsWithRunways}`);
+        console.error(`- Airports with frequencies: ${airportsWithFrequencies}`);
 
-    console.error('Processing complete:');
-    console.error(`- Airports: ${Object.keys(masterStructure).length}`);
-    console.error(`- Runways: ${runways.length}`);
-    console.error(`- Frequencies: ${frequencies.length}`);
-    let airportsWithRunways = 0;
-    let airportsWithFrequencies = 0;
-    Object.values(masterStructure).forEach((airport) => {
-        if (airport.runways.length > 0) airportsWithRunways++;
-        if (airport.frequencies.length > 0) airportsWithFrequencies++;
-    });
-    console.error(`- Airports with runways: ${airportsWithRunways}`);
-    console.error(`- Airports with frequencies: ${airportsWithFrequencies}`);
-
-    console.log(JSON.stringify(masterStructure, null, 2));
+        const outputFile = 'airports-data.json';
+        fs.writeFileSync(outputFile, JSON.stringify(masterStructure, null, 2));
+        console.error(`\nOutput written to ${outputFile}`);
+    } catch (e) {
+        console.error('Fatal error:', e);
+        process.exit(1);
+    }
 }
 
-const requiredFiles = ['airports.csv', 'runways.csv', 'airport-frequencies.csv'];
-const missingFiles = requiredFiles.filter((file) => !fs.existsSync(file));
-if (missingFiles.length > 0) {
-    console.error('Missing required files:', missingFiles.join(', '));
-    console.error('Please ensure all CSV files are in the current directory.');
-    console.error(' ... https://davidmegginson.github.io/ourairports-data/airports.csv');
-    console.error(' ... https://davidmegginson.github.io/ourairports-data/runways.csv');
-    console.error(' ... https://davidmegginson.github.io/ourairports-data/airport-frequencies.csv');
-    process.exit(1);
+const args = process.argv.slice(2);
+if (args.includes('--help') || args.includes('-h')) {
+    console.log('Airport Data Converter');
+    console.log('');
+    console.log('Usage: node airports-data-converter.js [options]');
+    console.log('');
+    console.log('This script converts airport CSV data to JSON format.');
+    console.log('It will use local CSV files if present, otherwise fetch from OurAirports.');
+    console.log('');
+    console.log('Output: airports-data.json');
+    console.log('');
+    console.log('Data sources:');
+    Object.entries(DATA_URLS).forEach(([file, url]) => console.log(`  ${file}: ${url}`));
+    process.exit(0);
 }
+
 main();

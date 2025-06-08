@@ -14,11 +14,11 @@ function haversine(lat1, lon1, lat2, lon2) {
 }
 
 function parseDistance(distanceStr) {
-    const input = distanceStr.toString().toLowerCase().trim();
-    const match = input.match(/^(\d+(?:\.\d+)?)\s*(nm|km)?$/);
-    if (!match) throw new Error(`Invalid distance format: "${distanceStr}". Use format like "450nm", "750km", or "500" (default km)`);
-    const value = parseFloat(match[1]);
-    const unit = match[2] || 'km'; // Default to km if no unit specified
+    const input = distanceStr.toString().toLowerCase().trim(),
+        match = input.match(/^(\d+(?:\.\d+)?)\s*(nm|km)?$/);
+    if (!match) return undefined;
+    const value = parseFloat(match[1]),
+        unit = match[2] || 'km'; // Default to km if no unit specified
     let distanceKm = value;
     if (unit === 'nm') distanceKm = value * 1.852;
     return {
@@ -40,7 +40,8 @@ function main() {
         process.exit(1);
     }
     const centerLat = parseFloat(args[0]),
-        centerLon = parseFloat(args[1]);
+        centerLon = parseFloat(args[1]),
+        distance = parseDistance(args[2]);
     if (isNaN(centerLat) || isNaN(centerLon)) {
         console.error('Error: Invalid latitude or longitude values');
         process.exit(1);
@@ -53,20 +54,17 @@ function main() {
         console.error('Error: Longitude must be between -180 and 180 degrees');
         process.exit(1);
     }
-    let distance;
-    try {
-        distance = parseDistance(args[2]);
-    } catch (err) {
-        console.error('Error:', err.message);
+    if (!distance) {
+        console.error(`Error: Invalid distance format: "${args[2]}". Use format like "450nm", "750km", or "500" (default km)`);
         process.exit(1);
     }
 
     console.log(`Searching for airports within ${distance.value}${distance.unit} (${distance.kilometers.toFixed(2)}km) of ${centerLat}, ${centerLon}`);
     let airports;
     try {
-        airports = JSON.parse(fs.readFileSync('airports.json', 'utf8'));
-    } catch (err) {
-        console.error('Error reading airports.json:', err.message);
+        airports = JSON.parse(fs.readFileSync('airports-data.json', 'utf8'));
+    } catch (e) {
+        console.error('Error reading airports-data.json:', e);
         process.exit(1);
     }
 
@@ -88,7 +86,7 @@ function main() {
                 };
                 foundAirports++;
             }
-        } catch (err) {
+        } catch (e) {
             continue;
         }
     }
@@ -100,8 +98,8 @@ module.exports = airportsData;
     try {
         fs.writeFileSync(outputFile, outputContent);
         console.log(`Output written to ${outputFile}`);
-    } catch (err) {
-        console.error('Error writing output file:', err.message);
+    } catch (e) {
+        console.error('Error writing output file:', e);
         process.exit(1);
     }
 }
