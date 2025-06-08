@@ -6,94 +6,92 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const ICING_CONDITIONS_CONFIG = {
-    enabled: false,
-    temperatureRange: {
-        min: -15,
-        max: 3,
-    },
-    altitudeBands: [
-        {
-            minAltitude: 8000,
-            maxAltitude: 30000,
-            severity: 'medium',
-            description: 'potential icing zone',
-        },
-    ],
-};
-
-const SEVERE_ICING_CONFIG = {
-    enabled: false,
-    sldConditions: {
-        // Supercooled Large Droplet conditions
+const configDefault = {
+    icingConditions: {
+        enabled: false,
         temperatureRange: {
-            min: -10, // °C
-            max: 0, // °C
+            min: -15,
+            max: 3,
         },
-        maxAltitude: 15000,
-        severity: 'high',
+        altitudeBands: [
+            {
+                minAltitude: 8000,
+                maxAltitude: 30000,
+                severity: 'medium',
+                description: 'potential icing zone',
+            },
+        ],
     },
-};
-
-const TURBULENCE_CONFIG = {
-    enabled: true,
-    minimumDataPoints: 5,
-    variationThreshold: 1200, // ft/min variation to trigger analysis
-    severityBands: [
-        {
-            maxStdDev: 600,
-            severity: 'low',
-            description: 'light turbulence',
-        },
-        {
-            maxStdDev: 1000,
-            severity: 'medium',
-            description: 'moderate turbulence',
-        },
-        {
-            maxStdDev: Infinity,
+    severeIcing: {
+        enabled: false,
+        sldConditions: {
+            // Supercooled Large Droplet conditions
+            temperatureRange: {
+                min: -10, // °C
+                max: 0, // °C
+            },
+            maxAltitude: 15000,
             severity: 'high',
-            description: 'severe turbulence',
         },
-    ],
-};
-
-const STRONG_WINDS_CONFIG = {
-    enabled: true,
-    altitudeBands: [
-        {
-            maxAltitude: 10000,
-            threshold: 50, // kts GS/TAS difference
-            severity: 'medium',
-            description: 'low altitude',
-        },
-        {
-            maxAltitude: 20000,
-            threshold: 75, // kts GS/TAS difference
-            severity: 'low',
-            description: 'medium altitude',
-        },
-        {
-            maxAltitude: 30000,
-            threshold: 120, // kts GS/TAS difference
-            severity: 'low',
-            description: 'high altitude',
-        },
-        {
-            maxAltitude: Infinity,
-            threshold: 150, // kts GS/TAS difference
-            severity: 'low',
-            description: 'cruise altitude',
-        },
-    ],
-    minimumDifference: 40, // Minimum GS/TAS difference to consider
-};
-
-const TEMPERATURE_INVERSION_CONFIG = {
-    enabled: true,
-    standardLapseRate: 2, // °C per 1000ft
-    deviationThreshold: 10, // °C deviation from ISA to trigger
-    severity: 'low',
+    },
+    turbulence: {
+        enabled: true,
+        minimumDataPoints: 5,
+        variationThreshold: 1200, // ft/min variation to trigger analysis
+        severityBands: [
+            {
+                maxStdDev: 600,
+                severity: 'low',
+                description: 'light turbulence',
+            },
+            {
+                maxStdDev: 1000,
+                severity: 'medium',
+                description: 'moderate turbulence',
+            },
+            {
+                maxStdDev: Infinity,
+                severity: 'high',
+                description: 'severe turbulence',
+            },
+        ],
+    },
+    strongWinds: {
+        enabled: true,
+        altitudeBands: [
+            {
+                maxAltitude: 10000,
+                threshold: 50, // kts GS/TAS difference
+                severity: 'medium',
+                description: 'low altitude',
+            },
+            {
+                maxAltitude: 20000,
+                threshold: 75, // kts GS/TAS difference
+                severity: 'low',
+                description: 'medium altitude',
+            },
+            {
+                maxAltitude: 30000,
+                threshold: 120, // kts GS/TAS difference
+                severity: 'low',
+                description: 'high altitude',
+            },
+            {
+                maxAltitude: Infinity,
+                threshold: 150, // kts GS/TAS difference
+                severity: 'low',
+                description: 'cruise altitude',
+            },
+        ],
+        minimumDifference: 40, // Minimum GS/TAS difference to consider
+    },
+    temperatureInversion: {
+        enabled: true,
+        standardLapseRate: 2, // °C per 1000ft
+        deviationThreshold: 10, // °C deviation from ISA to trigger
+        severity: 'low',
+    },
 };
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -230,15 +228,15 @@ function calculateVariables(aircraft) {
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function detectWeather(aircraft) {
+function detectWeather(config, aircraft) {
     if (!aircraft.hex) return undefined;
     const variables = calculateVariables(aircraft);
     const conditions = [
-        detectIcingConditions(ICING_CONDITIONS_CONFIG, aircraft),
-        detectSevereIcingRisk(SEVERE_ICING_CONFIG, aircraft),
-        detectTurbulence(TURBULENCE_CONFIG, variables.verticalRates),
-        detectStrongWinds(STRONG_WINDS_CONFIG, aircraft),
-        detectTemperatureInversion(TEMPERATURE_INVERSION_CONFIG, aircraft),
+        detectIcingConditions(config.icingConditions, aircraft),
+        detectSevereIcingRisk(config.severeIcing, aircraft),
+        detectTurbulence(config.turbulence, variables.verticalRates),
+        detectStrongWinds(config.strongWinds, aircraft),
+        detectTemperatureInversion(config.temperatureInversion, aircraft),
     ].filter(Boolean);
     if (conditions.length === 0) return undefined;
     return {
@@ -259,12 +257,12 @@ module.exports = {
     name: 'Aircraft Weather Operations',
     priority: 5,
     config: (conf, extra) => {
-        this.conf = conf;
+        this.conf = Object.fromEntries(Object.entries(configDefault).map(([module, config]) => [module, { ...config, ...conf[module] }]));
         this.extra = extra;
     },
     preprocess: (aircraft) => {
         aircraft.calculated.weather = { inWeatherOperation: false };
-        const weather = detectWeather(aircraft);
+        const weather = detectWeather(this.conf, aircraft);
         if (weather) aircraft.calculated.weather = weather;
     },
     evaluate: (aircraft) => aircraft.calculated.weather.inWeatherOperation,
