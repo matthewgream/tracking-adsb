@@ -168,23 +168,28 @@ $(document).ready(async function () {
     function findAirportsInRange(centerLat, centerLon, maxRange) {
         return Object.fromEntries(
             Object.entries(airportsData).flatMap(([code, airport]) => {
-		if (airport.type === 'closed') return [];
+                if (airport.type === 'closed') return [];
                 const distance = calculateGeoDistance(centerLat, centerLon, airport.latitude_deg, airport.longitude_deg);
                 return distance <= maxRange ? [[code, { ...airport, distance }]] : [];
             })
         );
     }
-    const is_pad  = (airport) => ['heliport', 'balloonport', 'seaplane_base'].includes (airport.type);
+    const is_pad = (airport) => ['heliport', 'balloonport', 'seaplane_base'].includes(airport.type);
     function airportATZradius(airport) {
-	if (is_pad (airport)) return 0.5;
-        const runwayLengthMax = airport.runwayLengthMax || airport.runways.reduce ((lengthMax, runway) => Math.max (runway.length_ft ? (runway.length_ft * 0.3048) : 0, lengthMax), 0);
-        return (((runwayLengthMax && runwayLengthMax < 1850) || airport.iata_code?.trim() === '') ? 2 : 2.5) * 1.852;
+        if (is_pad(airport)) return 0.5;
+        const runwayLengthMax = airport.runwayLengthMax || airport.runways.reduce((lengthMax, runway) => Math.max(runway.length_ft ? runway.length_ft * 0.3048 : 0, lengthMax), 0);
+        return ((runwayLengthMax && runwayLengthMax < 1850) || airport.iata_code?.trim() === '' ? 2 : 2.5) * 1.852;
     }
     function airportATZaltitude(airport) {
-	return airport.elevation_ft + (is_pad (airport) ? 1500 : 2000);
+        return airport.elevation_ft + (is_pad(airport) ? 1500 : 2000);
     }
     function isNearAirport(lat, lon, altitude) {
-        return altitude < 2000 && Object.entries(findAirportsInRange(homeLocation.lat, homeLocation.lon, maxRadarRange)).some(([_, airport]) => calculateGeoDistance(lat, lon, airport.latitude_deg, airport.longitude_deg) <= airportATZradius(airport) && altitude < airportATZaltitude(airport));
+        return (
+            altitude < 2000 &&
+            Object.entries(findAirportsInRange(homeLocation.lat, homeLocation.lon, maxRadarRange)).some(
+                ([_, airport]) => calculateGeoDistance(lat, lon, airport.latitude_deg, airport.longitude_deg) <= airportATZradius(airport) && altitude < airportATZaltitude(airport)
+            )
+        );
     }
     function displayRadarAirports() {
         Object.entries(findAirportsInRange(homeLocation.lat, homeLocation.lon, maxRadarRange)).forEach(([code, airport]) => {
