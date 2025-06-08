@@ -168,23 +168,28 @@ $(document).ready(async function () {
     function findAirportsInRange(centerLat, centerLon, maxRange) {
         return Object.fromEntries(
             Object.entries(airportsData).flatMap(([code, airport]) => {
-                const distance = calculateGeoDistance(centerLat, centerLon, airport.lat, airport.lon);
+		if (airport.type === 'closed') return [];
+                const distance = calculateGeoDistance(centerLat, centerLon, airport.latitude_deg, airport.longitude_deg);
                 return distance <= maxRange ? [[code, { ...airport, distance }]] : [];
             })
         );
     }
+    const is_pad  = (airport) => ['heliport', 'balloonport', 'seaplane_base'].includes (airport.type);
     function airportATZradius(airport) {
-        if (airport.radius) return airport.radius; // km
-        if (airport.runwayLengthMax) return (airport.runwayLengthMax < 1850 ? 2 : 2.5) * 1.852;
-        return (airport.iata?.trim() === '' ? 2 : 2.5) * 1.852;
+	if (is_pad (airport)) return 0.5;
+        const runwayLengthMax = airport.runwayLengthMax || airport.runways.reduce ((lengthMax, runway) => Math.max (runway.length_ft ? (runway.length_ft * 0.3048) : 0, lengthMax), 0);
+        return (((runwayLengthMax && runwayLengthMax < 1850) || airport.iata_code?.trim() === '') ? 2 : 2.5) * 1.852;
+    }
+    function airportATZaltitude(airport) {
+	return airport.elevation_ft + (is_pad (airport) ? 1500 : 2000);
     }
     function isNearAirport(lat, lon, altitude) {
-        return altitude < 2000 && Object.entries(findAirportsInRange(homeLocation.lat, homeLocation.lon, maxRadarRange)).some(([_, airport]) => calculateGeoDistance(lat, lon, airport.lat, airport.lon) <= airportATZradius(airport));
+        return altitude < 2000 && Object.entries(findAirportsInRange(homeLocation.lat, homeLocation.lon, maxRadarRange)).some(([_, airport]) => calculateGeoDistance(lat, lon, airport.latitude_deg, airport.longitude_deg) <= airportATZradius(airport) && altitude < airportATZaltitude(airport));
     }
     function displayRadarAirports() {
         Object.entries(findAirportsInRange(homeLocation.lat, homeLocation.lon, maxRadarRange)).forEach(([code, airport]) => {
             const { distance } = airport,
-                bearing = calculateGeoAngle(homeLocation.lat, homeLocation.lon, airport.lat, airport.lon); // eslint-disable-line unicorn/consistent-destructuring
+                bearing = calculateGeoAngle(homeLocation.lat, homeLocation.lon, airport.latitude_deg, airport.longitude_deg); // eslint-disable-line unicorn/consistent-destructuring
             const radarX = 50 + (distance / maxRadarRange) * 45 * Math.sin((bearing * Math.PI) / 180),
                 radarY = 50 - (distance / maxRadarRange) * 45 * Math.cos((bearing * Math.PI) / 180);
             const marker = $('<div class="airport-marker"></div>');
