@@ -1,46 +1,116 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const MAPPING_EXPIRY_TIME = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+const fs = require('fs');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const hexToFlightMap = new Map(),
-    flightToHexMap = new Map(),
-    hexTimestamps = new Map();
+const MAPPINGS_EXPIRY_TIME_DEFAULT = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+const MAPPINGS_FILENAME_DEFAULT = '.monitor-hextoflight.cache';
+const MAPPINGS_SAVE_TIME_DEFAULT = 5 * 60 * 1000; // 5 minutes default
+const MAPPINGS_VERSION = 1;
 
-function cleanupMappings() {
-    const expiryTime = Date.now() - MAPPING_EXPIRY_TIME;
-    const expiredHexes = [];
-    hexTimestamps.forEach((timestamp, hex) => {
-        if (timestamp < expiryTime) expiredHexes.push(hex);
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+const mappingsHexToFlight = new Map(),
+    mappingsFlightToHex = new Map(),
+    mappingsHexToTime = new Map();
+let mappingsFilename = MAPPINGS_FILENAME_DEFAULT,
+    mappingsSaveTime = MAPPINGS_SAVE_TIME_DEFAULT,
+    mappingsExpiryTime = MAPPINGS_EXPIRY_TIME_DEFAULT;
+
+function mappingsSave(filename) {
+    try {
+        const data = {
+            version: MAPPINGS_VERSION,
+            timestamp: Date.now(),
+            mappings: Object.fromEntries(mappingsHexToFlight.entries()),
+            timestamps: Object.fromEntries(mappingsHexToTime.entries()),
+        };
+        fs.writeFileSync(filename, JSON.stringify(data));
+        return true;
+    } catch (e) {
+        console.error(`mappings[hex/flight]: failed to save to ${filename}:`, e);
+        return false;
+    }
+}
+
+function mappingsLoad(filename) {
+    try {
+        if (!fs.existsSync(filename)) return false;
+        const data = JSON.parse(fs.readFileSync(filename, 'utf8'));
+        if (data.version !== MAPPINGS_VERSION) return false;
+        mappingsHexToFlight.clear();
+        mappingsFlightToHex.clear();
+        mappingsHexToTime.clear();
+        Object.entries(data.mappings).forEach(([hex, flight]) => {
+            mappingsHexToFlight.set(hex, flight);
+            if (!mappingsFlightToHex.has(flight)) mappingsFlightToHex.set(flight, hex);
+        });
+        Object.entries(data.timestamps).forEach(([hex, timestamp]) => mappingsHexToTime.set(hex, timestamp));
+        mappingsCleanup();
+        return true;
+    } catch (e) {
+        console.error(`mappings[hex/flight]: failed to load from ${filename}:`, e);
+        return false;
+    }
+}
+
+function mappingsInit(options) {
+    if (options?.mappingsFilename) mappingsFilename = options.mappingsFilename;
+    if (options?.mappingsSaveTimeMins) mappingsSaveTime = options.mappingsSaveTimeMins * 60 * 1000;
+    if (options?.mappingsExpiryTimeDays) mappingsExpiryTime = options.mappingsExpiryTimeDays * 24 * 60 * 60 * 1000;
+    let intervalId;
+    if (mappingsLoad(mappingsFilename))
+        if (options?.debug) console.error(`mappings[hex/flight]: loaded from ${mappingsFilename} (${mappingsHexToFlight.size} entries)`);
+    if (mappingsSaveTime > 0) {
+        intervalId = setInterval(() => {
+            if (mappingsSave(mappingsFilename) && options?.debug)
+                console.error(`mappings[hex/flight]: saved to ${mappingsFilename} (${mappingsHexToFlight.size} entries)`);
+        }, mappingsSaveTime);
+        intervalId.unref();
+    }
+    process.once('exit', () => {
+        if (intervalId) clearInterval(intervalId);
+        mappingsSave(mappingsFilename);
+    });
+    process.once('SIGINT', () => process.exit(0));
+    process.once('SIGTERM', () => process.exit(0));
+}
+
+function mappingsCleanup() {
+    const expiredTime = Date.now() - mappingsExpiryTime,
+        expiredHexes = [];
+    mappingsHexToTime.forEach((timestamp, hex) => {
+        if (timestamp < expiredTime) expiredHexes.push(hex);
     });
     expiredHexes.forEach((hex) => {
-        const flight = hexToFlightMap.get(hex);
-        hexToFlightMap.delete(hex);
-        hexTimestamps.delete(hex);
-        if (flight && flightToHexMap.get(flight) === hex) flightToHexMap.delete(flight);
+        const flight = mappingsHexToFlight.get(hex);
+        mappingsHexToFlight.delete(hex);
+        mappingsHexToTime.delete(hex);
+        if (flight && mappingsFlightToHex.get(flight) === hex) mappingsFlightToHex.delete(flight);
     });
     return expiredHexes.length;
 }
 
-function updateMappings(hex, flight) {
+function mappingsUpdate(hex, flight) {
     const now = Date.now();
-    const previousHex = flightToHexMap.get(flight);
+    const previousHex = mappingsFlightToHex.get(flight);
     if (previousHex && previousHex !== hex) {
-        hexToFlightMap.delete(previousHex);
-        hexTimestamps.delete(previousHex);
+        mappingsHexToFlight.delete(previousHex);
+        mappingsHexToTime.delete(previousHex);
     }
-    hexToFlightMap.set(hex, flight);
-    flightToHexMap.set(flight, hex);
-    hexTimestamps.set(hex, now);
+    mappingsHexToFlight.set(hex, flight);
+    mappingsFlightToHex.set(flight, hex);
+    mappingsHexToTime.set(hex, now);
 }
 
-function statsMappings() {
+function mappingStats() {
     const now = Date.now();
     let oldestTimestamp, newestTimestamp, oldestHex, newestHex;
-    hexTimestamps.forEach((timestamp, hex) => {
+    mappingsHexToTime.forEach((timestamp, hex) => {
         if (!oldestTimestamp || timestamp < oldestTimestamp) {
             oldestTimestamp = timestamp;
             oldestHex = hex;
@@ -51,11 +121,11 @@ function statsMappings() {
         }
     });
     return {
-        mapSize: hexToFlightMap.size,
+        mapSize: mappingsHexToFlight.size,
         oldestEntry: oldestTimestamp
             ? {
                   hex: oldestHex,
-                  flight: hexToFlightMap.get(oldestHex),
+                  flight: mappingsHexToFlight.get(oldestHex),
                   age: Math.round((now - oldestTimestamp) / 1000), // age in seconds
                   timestamp: new Date(oldestTimestamp).toISOString(),
               }
@@ -63,14 +133,39 @@ function statsMappings() {
         newestEntry: newestTimestamp
             ? {
                   hex: newestHex,
-                  flight: hexToFlightMap.get(newestHex),
+                  flight: mappingsHexToFlight.get(newestHex),
                   age: Math.round((now - newestTimestamp) / 1000), // age in seconds
                   timestamp: new Date(newestTimestamp).toISOString(),
               }
             : undefined,
-        expiryTime: MAPPING_EXPIRY_TIME / 1000, // expiry time in seconds
-        uniqueFlights: flightToHexMap.size,
+        expiredTime: mappingsExpiryTime / 1000, // expiry time in seconds
+        uniqueFlights: mappingsFlightToHex.size,
     };
+}
+
+function mappingsReplaceAndUpdate(aircrafts, debug = false) {
+    let replaceCount = 0,
+        updatedCount = 0;
+    const cleanedCount = mappingsCleanup();
+    aircrafts?.forEach((aircraft) => {
+        if (aircraft.flight) aircraft.flight = aircraft.flight.trim();
+        if (aircraft.flight && aircraft.hex) {
+            const flight = mappingsHexToFlight.get(aircraft.hex);
+            if (flight !== aircraft.flight) {
+                mappingsUpdate(aircraft.hex, aircraft.flight);
+                updatedCount++;
+            }
+        }
+        if (!aircraft.flight) {
+            if (aircraft.hex && mappingsHexToFlight.has(aircraft.hex)) {
+                aircraft.flight = mappingsHexToFlight.get(aircraft.hex);
+                replaceCount++;
+            } else aircraft.flight = `[${aircraft.hex}]`;
+        }
+    });
+    if (debug && (replaceCount > 0 || updatedCount > 0 || cleanedCount > 0))
+        console.error(`mappings[hex/flight]: replace=${replaceCount}, updated=${updatedCount}, cleaned=${cleanedCount} (${mappingsHexToFlight.size} entries)`);
+    return aircrafts;
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -78,34 +173,7 @@ function statsMappings() {
 
 function initialise(options) {
     function fixup(data) {
-        let replaceCount = 0,
-            updatedCount = 0;
-        const cleanedCount = cleanupMappings();
-        data.aircraft?.forEach((aircraft) => {
-            if (aircraft.flight) aircraft.flight = aircraft.flight.trim();
-            if (aircraft.flight && aircraft.hex) {
-                const existingFlight = hexToFlightMap.get(aircraft.hex);
-                if (existingFlight !== aircraft.flight) {
-                    updateMappings(aircraft.hex, aircraft.flight);
-                    updatedCount++;
-                }
-            }
-            if (!aircraft.flight) {
-                if (aircraft.hex && hexToFlightMap.has(aircraft.hex)) {
-                    aircraft.flight = hexToFlightMap.get(aircraft.hex);
-                    replaceCount++;
-                } else {
-                    aircraft.flight = `[${aircraft.hex}]`;
-                }
-            }
-        });
-        if (options?.debug && (replaceCount > 0 || updatedCount > 0 || cleanedCount > 0)) {
-            const parts = [];
-            if (replaceCount > 0) parts.push(`substituted=${replaceCount}`);
-            if (updatedCount > 0) parts.push(`updated=${updatedCount}`);
-            if (cleanedCount > 0) parts.push(`cleaned=${cleanedCount}`);
-            console.error(`hex/flight mapping: ${parts.join(', ')} (map size: ${hexToFlightMap.size})`);
-        }
+        mappingsReplaceAndUpdate(data?.aircraft, options.debug);
         return data;
     }
 
@@ -145,9 +213,11 @@ function initialise(options) {
         });
     }
 
+    mappingsInit(options);
+
     return {
         fetch,
-        stats: statsMappings,
+        stats: mappingStats,
     };
 }
 

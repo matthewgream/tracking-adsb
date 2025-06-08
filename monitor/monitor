@@ -86,10 +86,10 @@ function formatStatsList(name, list) {
 }
 
 function formatAirport(airport) {
-    const { name, icao } = airport || {};
-    if (name && icao) return `${icao} [${name}]`;
+    const { name, icao_code } = airport || {};
+    if (name && icao_code) return `${icao_code} [${name}]`;
     if (name) return name;
-    if (icao) return icao;
+    if (icao_code) return icao_code;
     return '';
 }
 
@@ -181,7 +181,7 @@ function airportsInit(config, { location, range, vicinity }) {
     }
     if (vicinity) {
         const av = airports.findNearby(location.lat, location.lon, { distance: vicinity });
-        airportText.push(`${av.length} in vicinity (${vicinity}km): ${av.map((a) => formatAirport(a)).join(' ,')}`);
+        airportText.push(`${av.length} in vicinity (${vicinity}km): ${av.map((a) => formatAirport(a)).join(', ')}`);
     }
     console.error(`airports: ${airportText.join('; ')}`);
     return airports;

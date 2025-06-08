@@ -42,7 +42,7 @@ module.exports = {
     getStats: (aircrafts, list) => {
         const byAirport = list
             .filter((a) => a.calculated.lifting.hasKnownOrigin)
-            .map((a) => a.calculated.lifting.departureAirport?.name || a.calculated.lifting.departureAirport?.icao)
+            .map((a) => a.calculated.lifting.departureAirport?.name || a.calculated.lifting.departureAirport?.icao_code)
             .reduce((counts, airport) => ({ ...counts, [airport]: (counts[airport] || 0) + 1 }), {});
         return {
             knownOriginCount: list.filter((a) => a.calculated.lifting.hasKnownOrigin).length,

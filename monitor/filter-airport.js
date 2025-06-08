@@ -36,8 +36,8 @@ module.exports = {
     },
     getStats: (aircrafts, list) => {
         const byAirport = list
-            .map((aircraft) => aircraft.calculated.airports_nearby.airports[0].icao)
-            .reduce((counts, icao) => ({ ...counts, [icao]: (counts[icao] || 0) + 1 }), {});
+            .map((aircraft) => aircraft.calculated.airports_nearby.airports[0].icao_code)
+            .reduce((counts, icao_code) => ({ ...counts, [icao_code]: (counts[icao_code] || 0) + 1 }), {});
         return {
             byAirport,
         };
@@ -47,7 +47,7 @@ module.exports = {
         const [airport] = airports_nearby.airports;
         return {
             text: `near ${this.extra.format.formatAirport(airport) || 'airport'}`,
-            warn: this.conf.priorities?.includes(airport.icao),
+            warn: this.conf.priorities?.includes(airport.icao_code),
         };
     },
     debug: (type, aircraft) => {
