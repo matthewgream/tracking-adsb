@@ -29,7 +29,7 @@ function squawkDataAnalysis(squawkCodes) {
     const unique = Object.keys(squawkCodes.mapOfSquawks).length;
     const actual = Object.values(squawkCodes.mapOfSquawks).reduce((count, entries) => count + entries.length, 0);
     const types = [...new Set(Object.keys(squawkCodes.mapOfTypes))];
-    return `squawks: <possible=${possible}, unique=${unique}, actual=${actual}>, types: <count=${types.length}>`;
+    return `codes: possible=${possible}, unique=${unique}, actual=${actual}, types: count=${types.length}`;
 }
 
 function buildSquawkCodes(squawkData) {
@@ -68,7 +68,7 @@ function buildSquawkCodes(squawkData) {
             mapOfTypes[entry.type].push(entry);
         }
     });
-    if (badEntries > 0) console.error(`squawkData: trimmed out ${badEntries} bad entries`);
+    if (badEntries > 0) console.error(`squawks: data prunned ${badEntries} bad entries`);
     return {
         mapOfSquawks,
         mapOfTypes,
@@ -83,12 +83,10 @@ function initialise(options, data) {
     try {
         squawkData = require(path.join(data?.directory, options?.file));
     } catch (e) {
-        console.error('squawkData: not available:', e);
+        console.error('squawks: codes not available:', e);
     }
-    if (squawkData?.codes) {
-        squawkCodes = buildSquawkCodes(squawkData);
-        console.error(`squawkData: ${squawkDataAnalysis(squawkCodes)}`);
-    } else console.error('squawkData: codes not available');
+    if (squawkData?.codes) squawkCodes = buildSquawkCodes(squawkData);
+     else console.error('squawks: codes not available: no content');
 
     return {
         getInfo: () => squawkDataAnalysis(squawkCodes),

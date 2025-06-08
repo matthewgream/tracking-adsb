@@ -193,7 +193,7 @@ function furtherInit(config, _data) {
             let data;
             try {
                 data = require(`./data-${name}.js`)(options, { directory: '../content' });
-                console.error(`data [${name}]: loaded: ${data.getInfo()}`);
+                console.error(`data [${name}]: ${data.getInfo()}`);
             } catch (e) {
                 console.error(`data [${name}]: could not be loaded:`, e);
             }

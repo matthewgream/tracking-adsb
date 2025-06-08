@@ -3,8 +3,10 @@ config.*.js
 airports-data.json
 airports-data.*.js
 !airports-data.js
+!airports-data.adsb.js
 eslint.config.mjs
 node_modules
 package-lock.json
 *.csv
 .*.cache
+.prettierrc.json
