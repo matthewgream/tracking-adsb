@@ -32,7 +32,7 @@ function mappingsSave(filename) {
         fs.writeFileSync(filename, JSON.stringify(data));
         return true;
     } catch (e) {
-        console.error(`mappings[hex/flight]: failed to save to ${filename}:`, e);
+        console.error(`flights: mappings[hex/flight]: failed to save to ${filename}:`, e);
         return false;
     }
 }
@@ -53,7 +53,7 @@ function mappingsLoad(filename) {
         mappingsCleanup();
         return true;
     } catch (e) {
-        console.error(`mappings[hex/flight]: failed to load from ${filename}:`, e);
+        console.error(`flights: mappings[hex/flight]: failed to load from ${filename}:`, e);
         return false;
     }
 }
@@ -64,11 +64,11 @@ function mappingsInit(options) {
     if (options?.mappingsExpiryTimeDays) mappingsExpiryTime = options.mappingsExpiryTimeDays * 24 * 60 * 60 * 1000;
     let intervalId;
     if (mappingsLoad(mappingsFilename))
-        if (options?.debug) console.error(`mappings[hex/flight]: loaded from ${mappingsFilename} (${mappingsHexToFlight.size} entries)`);
+        if (options?.debug) console.error(`flights: mappings[hex/flight]: loaded from ${mappingsFilename} (${mappingsHexToFlight.size} entries)`);
     if (mappingsSaveTime > 0) {
         intervalId = setInterval(() => {
             if (mappingsSave(mappingsFilename) && options?.debug)
-                console.error(`mappings[hex/flight]: saved to ${mappingsFilename} (${mappingsHexToFlight.size} entries)`);
+                console.error(`flights: mappings[hex/flight]: saved to ${mappingsFilename} (${mappingsHexToFlight.size} entries)`);
         }, mappingsSaveTime);
         intervalId.unref();
     }
@@ -164,7 +164,7 @@ function mappingsReplaceAndUpdate(aircrafts, debug = false) {
         }
     });
     if (debug && (replaceCount > 0 || updatedCount > 0 || cleanedCount > 0))
-        console.error(`mappings[hex/flight]: replace=${replaceCount}, updated=${updatedCount}, cleaned=${cleanedCount} (${mappingsHexToFlight.size} entries)`);
+        console.error(`flights: mappings[hex/flight]: replace=${replaceCount}, updated=${updatedCount}, cleaned=${cleanedCount} (${mappingsHexToFlight.size} entries)`);
     return aircrafts;
 }
 

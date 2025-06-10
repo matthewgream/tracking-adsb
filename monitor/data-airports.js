@@ -71,7 +71,7 @@ class AirportsData {
         this.data = require(this.source);
         Object.entries(this.data)
             .filter(([_, airport]) => airport.type === 'closed') // expand to filtering criteria
-            .forEach(([icao_code, airport]) => delete this.data[icao_code]);
+            .forEach(([icao_code]) => delete this.data[icao_code]);
         Object.entries(this.data)
             .filter(([_, airport]) => !airport.icao_code)
             .forEach(([icao_code, airport]) => (airport.icao_code = icao_code));
@@ -80,7 +80,7 @@ class AirportsData {
         Object.entries(airports).forEach(([icao_code, airport]) => {
             if (!this.data[icao_code]) this.data[icao_code] = { icao_code };
             Object.assign(this.data[icao_code], airport);
-            console.error(`airportsData: override [${icao_code}]: ${JSON.stringify(this.data[icao_code])}`);
+            console.error(`airports: override [${icao_code}]: ${JSON.stringify(this.data[icao_code])}`);
         });
     }
 }
@@ -133,7 +133,7 @@ class AirportsDataSpatialIndexing extends AirportsData {
             });
         const num = this.spatialIndex.size;
         console.error(
-            `airportsData: spatial index built with ${num} grid cells [tot=${tot}, cnt=${cnt}, avg=${(cnt / num).toFixed(1)}, max=${max}] (cache: limit=${this.cacheLimit}, trim=${this.cacheTrim})`
+            `airports: spatial index built with ${num} grid cells [tot=${tot}, cnt=${cnt}, avg=${(cnt / num).toFixed(1)}, max=${max}] (cache: limit=${this.cacheLimit}, trim=${this.cacheTrim})`
         );
     }
 

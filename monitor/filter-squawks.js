@@ -398,7 +398,7 @@ function detectHelicopterCodeMismatch(tools, aircraft, squawkMatches) {
         return {
             type: 'helicopter-code-fixed-wing',
             severity: 'high',
-            details: `Helicopter code ${aircraft.squawk} on ${tools.formatCategoryCode(aircraft.category) || 'non-rotorcraft'}`,
+            details: `Helicopter code ${aircraft.squawk} on ${tools.format.formatCategoryCode(aircraft.category) || 'non-rotorcraft'}`,
             description: 'Rotorcraft code on fixed-wing aircraft',
         };
     }
@@ -418,7 +418,7 @@ function detectLightAircraftCodeMismatch(tools, aircraft, squawkMatches) {
             return {
                 type: 'glider-ops-wrong-category',
                 severity: 'medium',
-                details: `Glider ops code ${aircraft.squawk} on ${tools.formatCategoryCode(aircraft.category)}`,
+                details: `Glider ops code ${aircraft.squawk} on ${tools.format.formatCategoryCode(aircraft.category)}`,
                 description: 'Glider operations code on inappropriate aircraft',
             };
     }
@@ -496,7 +496,7 @@ function detectAircraftSizeMismatch(tools, aircraft, squawkMatches) {
         return {
             type: 'heavy-aircraft-light-code',
             severity: 'medium',
-            details: `${tools.formatCategoryCode(aircraft.category)} using light aircraft code ${aircraft.squawk}`,
+            details: `${tools.format.formatCategoryCode(aircraft.category)} using light aircraft code ${aircraft.squawk}`,
             description: 'Large aircraft using light aircraft code',
         };
     return undefined;
@@ -512,7 +512,7 @@ function detectParachutingCodeValidation(tools, aircraft, squawkMatches) {
             return {
                 type: 'paradrop-heavy-aircraft',
                 severity: 'low',
-                details: `Heavy aircraft ${tools.formatCategoryCode(aircraft.category)} using paradrop code`,
+                details: `Heavy aircraft ${tools.format.formatCategoryCode(aircraft.category)} using paradrop code`,
                 description: 'Unusually large aircraft for parachuting ops',
             };
         // Should be at appropriate altitude for drops
@@ -543,7 +543,7 @@ function detectDescriptionBasedAnomalies(tools, aircraft, squawkMatches) {
                     anomalies.push({
                         type: 'atc-directed-code-light-aircraft',
                         severity: 'medium',
-                        details: `ATC-directed code ${aircraft.squawk} on ${tools.formatCategoryCode(aircraft.category)}`,
+                        details: `ATC-directed code ${aircraft.squawk} on ${tools.format.formatCategoryCode(aircraft.category)}`,
                         description: 'Restricted code on recreational aircraft',
                     });
             }
@@ -572,7 +572,7 @@ function detectDescriptionBasedAnomalies(tools, aircraft, squawkMatches) {
                 anomalies.push({
                     type: 'helicopter-only-code',
                     severity: 'high',
-                    details: `Helicopter-only code on ${tools.formatCategoryCode(aircraft.category)}`,
+                    details: `Helicopter-only code on ${tools.format.formatCategoryCode(aircraft.category)}`,
                     description: 'Rotorcraft-specific code misuse',
                 });
             // Check for "conspicuity" codes being used with discrete services
@@ -605,7 +605,7 @@ function detectSAROperationsValidation(tools, aircraft, squawkMatches) {
             return {
                 type: 'sar-inappropriate-category',
                 severity: 'high',
-                details: `SAR code on ${tools.formatCategoryCode(aircraft.category)}`,
+                details: `SAR code on ${tools.format.formatCategoryCode(aircraft.category)}`,
                 description: 'Search and rescue code on inappropriate vehicle',
             };
         // SAR operations typically at lower altitudes
@@ -631,7 +631,7 @@ function detectTrainingCodeValidation(tools, aircraft, squawkMatches) {
             return {
                 type: 'student-large-aircraft',
                 severity: 'medium',
-                details: `Student pilot code on ${tools.formatCategoryCode(aircraft.category)}`,
+                details: `Student pilot code on ${tools.format.formatCategoryCode(aircraft.category)}`,
                 description: 'Training code on large aircraft',
             };
         // Students shouldn't be at high altitude
