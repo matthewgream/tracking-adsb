@@ -31,8 +31,7 @@ const filters = {
 
 function calculateAircraft(aircraftList) {
     for (const aircraft of aircraftList) {
-        if (aircraft.lat && aircraft.lon)
-            aircraft.calculated_distance = Math.round(calculateDistance(config.location.lat, config.location.lon, aircraft.lat, aircraft.lon) * 10) / 10;
+        if (aircraft.lat && aircraft.lon) aircraft.calculated_distance = Math.round(calculateDistance(config.location.lat, config.location.lon, aircraft.lat, aircraft.lon) * 10) / 10;
         aircraft.calculated_altitude = aircraft.alt_baro || aircraft.alt_geom;
         if (aircraft.calculated_altitude === 'ground') aircraft.calculated_altitude = 0;
         if (typeof aircraft.calculated_altitude !== 'number') delete aircraft.calculated_altitude;
@@ -56,7 +55,15 @@ function filterAircraft(aircraftList) {
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const flightData = require('./data-flights.js')();
+const { FlightDataFetcher } = require('./flights-data.js');
+const flightData = new FlightDataFetcher({
+    retries: 5,
+    mappings: {
+        filename: './.cache-hexcodes.json',
+        expiryTime: 30 * 24 * 60 * 60 * 1000, // 30 days
+    },
+    ...config,
+});
 
 async function main() {
     try {

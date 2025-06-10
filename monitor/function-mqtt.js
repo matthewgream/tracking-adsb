@@ -1,91 +1,206 @@
-// -----------------------------------------------------------------------------------------------------------------------------------------
-// -----------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const mqtt = require('mqtt');
-let config = {};
-let client;
-let receiver;
 
-function mqttReceive(topic, message) {
-    try {
-        if (receiver) receiver(topic, message);
-    } catch (e) {
-        console.error(`mqtt: receiver on '${topic}', error (exception):`, e);
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+class MqttClient {
+    constructor(options = {}) {
+        this.options = {
+            server: options.server || 'mqtt://localhost',
+            clientId: options.clientId || `mqtt-client-${Date.now()}`,
+            username: options.username,
+            password: options.password,
+            topics: options.topics || [],
+            debug: options.debug || false,
+            reconnectPeriod: options.reconnectPeriod || 5000,
+            connectTimeout: options.connectTimeout || 30000,
+            ...options,
+            logger: options.logger || console.error, // Default to console.error
+        };
+
+        this.client = undefined;
+        this.receiver = undefined;
+        this.connected = false;
+
+        this.stats = {
+            published: 0,
+            received: 0,
+            errors: 0,
+            reconnects: 0,
+        };
     }
-}
 
-function mqttPublish(topic, message, options = {}) {
-    if (client)
-        try {
-            const payload = typeof message === 'object' ? JSON.stringify(message) : message;
-            client.publish(topic, payload, options, (err) => {
-                if (err) console.error(`mqtt: publish to '${topic}', error:`, err);
-                else if (config.debug) console.error(`mqtt: published to '${topic}'`);
+    begin(receiver) {
+        if (this.client) {
+            this._log('already connected');
+            return;
+        }
+
+        this.receiver = receiver;
+
+        const connectOptions = {
+            clientId: this.options.clientId,
+            reconnectPeriod: this.options.reconnectPeriod,
+            connectTimeout: this.options.connectTimeout,
+        };
+
+        if (this.options.username && this.options.password) {
+            connectOptions.username = this.options.username;
+            connectOptions.password = this.options.password;
+        }
+
+        this._log(`connecting to '${this.options.server}'`);
+
+        this.client = mqtt.connect(this.options.server, connectOptions);
+
+        if (!this.client) {
+            throw new Error('Failed to create MQTT client');
+        }
+
+        this._setupEventHandlers();
+
+        const topicsInfo = this.options.topics.length > 0 ? `, topics=${this.options.topics.join(',')}` : '';
+        this._log(`initialized: server=${this.options.server}, client=${this.options.clientId}${topicsInfo}`);
+    }
+
+    end() {
+        if (!this.client) return Promise.resolve();
+
+        this._log('closing connection');
+        this.connected = false;
+
+        return new Promise((resolve) => {
+            this.client.end(false, {}, () => {
+                this.client = undefined;
+                this._log('connection closed');
+                resolve();
             });
+        });
+    }
+
+    publish(topic, message, options = {}) {
+        if (!this.client || !this.connected) {
+            this._log('cannot publish - not connected');
+            return false;
+        }
+
+        try {
+            const payload = typeof message === 'object' ? JSON.stringify(message) : String(message);
+
+            this.client.publish(topic, payload, options, (error) => {
+                if (error) {
+                    this.stats.errors++;
+                    this._log(`publish error on '${topic}':`, error.message);
+                } else {
+                    this.stats.published++;
+                    if (this.options.debug) {
+                        this._log(`published to '${topic}'`);
+                    }
+                }
+            });
+
             return true;
         } catch (e) {
-            console.error(`mqtt: publish error:`, e);
+            this.stats.errors++;
+            this._log('publish exception:', e.message);
+            return false;
         }
-    return false;
-}
-
-function mqttSubscribe() {
-    if (client) {
-        if (Array.isArray(config.topics))
-            config.topics.forEach((topic) =>
-                client.subscribe(topic, (err) => {
-                    if (err) console.error(`mqtt: subscribe to '${topic}', error:`, err);
-                    else console.error(`mqtt: subscribe to '${topic}', succeeded`);
-                })
-            );
     }
-}
 
-function mqttBegin(r) {
-    const options = {
-        clientId: config.clientId,
-    };
-    if (config.username && config.password) {
-        options.username = config.username;
-        options.password = config.password;
-    }
-    receiver = r;
-    console.error(`mqtt: connecting to '${config.server}'`);
-    client = mqtt.connect(config.server, options);
-    if (client) {
-        client.on('connect', () => {
-            console.error('mqtt: connected');
-            mqttSubscribe();
+    subscribe(topics) {
+        if (!this.client || !this.connected) {
+            this._log('cannot subscribe - not connected');
+            return;
+        }
+
+        const topicsArray = Array.isArray(topics) ? topics : [topics];
+
+        topicsArray.forEach((topic) => {
+            this.client.subscribe(topic, (error) => {
+                if (error) {
+                    this.stats.errors++;
+                    this._log(`subscribe error on '${topic}':`, error.message);
+                } else {
+                    this._log(`subscribed to '${topic}'`);
+                }
+            });
         });
-        client.on('message', (topic, message) => {
-            mqttReceive(topic, message);
+    }
+
+    getStats() {
+        return {
+            ...this.stats,
+            connected: this.connected,
+            uptime: this.connectedAt ? Date.now() - this.connectedAt : 0,
+        };
+    }
+
+    isConnected() {
+        return this.connected;
+    }
+
+    _setupEventHandlers() {
+        this.client.on('connect', () => {
+            this.connected = true;
+            this.connectedAt = Date.now();
+            this._log('connected');
+
+            // Auto-subscribe to configured topics
+            if (this.options.topics.length > 0) {
+                this.subscribe(this.options.topics);
+            }
         });
-        client.on('error', (err) => console.error('mqtt: error:', err));
-        client.on('offline', () => console.error('mqtt: offline'));
-        client.on('reconnect', () => console.error('mqtt: reconnect'));
+
+        this.client.on('message', (topic, message) => {
+            this.stats.received++;
+            this._handleMessage(topic, message);
+        });
+
+        this.client.on('error', (error) => {
+            this.stats.errors++;
+            this._log('error:', error.message);
+        });
+
+        this.client.on('offline', () => {
+            this.connected = false;
+            this._log('offline');
+        });
+
+        this.client.on('reconnect', () => {
+            this.stats.reconnects++;
+            this._log('reconnecting');
+        });
+
+        this.client.on('close', () => {
+            this.connected = false;
+            this._log('connection closed');
+        });
     }
-    const topicsFormatted = Array.isArray(config.topics) && config.topics.length > 0 ? config.topics.join(',') : '';
-    console.error(`mqtt: loaded using 'server=${config.server}, client=${config.clientId}${topicsFormatted ? ', topics=' + topicsFormatted : ''}'`);
+
+    _handleMessage(topic, message) {
+        if (!this.receiver) return;
+
+        try {
+            const messageStr = message.toString();
+            this.receiver(topic, messageStr);
+        } catch (e) {
+            this.stats.errors++;
+            this._log(`receiver error on '${topic}':`, e.message);
+        }
+    }
+
+    _log(...args) {
+        this.options.logger('mqtt-client:', ...args);
+    }
 }
 
-function mqttEnd() {
-    if (client) {
-        client.end();
-        client = undefined;
-    }
-}
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-// -----------------------------------------------------------------------------------------------------------------------------------------
-// -----------------------------------------------------------------------------------------------------------------------------------------
+module.exports.MqttClient = MqttClient;
 
-module.exports = function (c) {
-    config = c;
-    return {
-        begin: mqttBegin,
-        end: mqttEnd,
-        publish: mqttPublish,
-    };
-};
-
-// -----------------------------------------------------------------------------------------------------------------------------------------
-// -----------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------

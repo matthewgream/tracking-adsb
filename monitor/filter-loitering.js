@@ -1,7 +1,8 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const helpers = require('./filter-helpers.js');
+// const helpers = require('./filter-helpers.js');
+const tools = require('./tools-geometry.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -83,9 +84,7 @@ function quickFilterCheck(config, aircraft) {
     if (!aircraft.calculated?.altitude || aircraft.calculated.altitude > config.maxAltitude) return { pass: false, reason: 'altitude' };
     // 2. Speed check
     if (!aircraft.gs || aircraft.gs < config.minGroundSpeed || aircraft.gs > config.maxGroundSpeed) return { pass: false, reason: 'speed' };
-    // 3. Must have trajectory data
-    if (!aircraft.calculated?.trajectoryData || aircraft.calculated.trajectoryData.length < config.trajectory.minDataPoints)
-        return { pass: false, reason: 'insufficient_data' };
+    // 3. Check will be done in analyzeBoundingBox with AircraftData
     // 4. Category filtering
     if (config.categoryFiltering.enabled && aircraft.category) {
         if (config.categoryFiltering.include.includes(aircraft.category)) return { pass: true, categoryBonus: 0.2 }; // Bonus for expected types
@@ -97,19 +96,11 @@ function quickFilterCheck(config, aircraft) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function analyzeBoundingBox(trajectoryData, config) {
-    const now = Date.now();
-    const cutoffTime = now - config.trajectory.maxTimeWindow;
-    const positions = trajectoryData
-        .filter((entry) => entry.timestamp >= cutoffTime && entry.snapshot.lat !== undefined && entry.snapshot.lon !== undefined)
-        .map((entry) => ({
-            lat: entry.snapshot.lat,
-            lon: entry.snapshot.lon,
-            timestamp: entry.timestamp,
-            altitude: entry.snapshot.calculated?.altitude || entry.snapshot.alt_baro,
-            track: entry.snapshot.track,
-            gs: entry.snapshot.gs,
-        }));
+function analyzeBoundingBox(aircraftData, config) {
+    const positions = aircraftData.getPositions({
+        timeWindow: config.trajectory.maxTimeWindow,
+        requireCompleteData: false,
+    });
     if (positions.length < config.trajectory.minDataPoints) return { pass: false, reason: 'insufficient_positions' };
     const lats = positions.map((p) => p.lat),
         lons = positions.map((p) => p.lon);
@@ -117,16 +108,15 @@ function analyzeBoundingBox(trajectoryData, config) {
         maxLat = Math.max(...lats),
         minLon = Math.min(...lons),
         maxLon = Math.max(...lons);
-    const diagonal = helpers.calculateDistance(minLat, minLon, maxLat, maxLon);
+    const diagonal = tools.calculateDistance(minLat, minLon, maxLat, maxLon).distance;
     if (diagonal > config.trajectory.maxBoundingBox) return { pass: false, reason: 'area_too_large', diagonal };
     if (diagonal < config.trajectory.minBoundingBox) return { pass: false, reason: 'not_moving_enough', diagonal };
     let totalDistance = 0;
-    for (let i = 1; i < positions.length; i++)
-        totalDistance += helpers.calculateDistance(positions[i - 1].lat, positions[i - 1].lon, positions[i].lat, positions[i].lon);
+    for (let i = 1; i < positions.length; i++) totalDistance += tools.calculateDistance(positions[i - 1].lat, positions[i - 1].lon, positions[i].lat, positions[i].lon).distance;
     if (totalDistance < config.trajectory.minTotalDistance) return { pass: false, reason: 'insufficient_movement', totalDistance };
     const centerLat = (minLat + maxLat) / 2,
         centerLon = (minLon + maxLon) / 2;
-    const distances = positions.map((p) => helpers.calculateDistance(centerLat, centerLon, p.lat, p.lon));
+    const distances = positions.map((p) => tools.calculateDistance(centerLat, centerLon, p.lat, p.lon).distance);
     const radius = distances.reduce((a, b) => a + b, 0) / distances.length;
     return {
         pass: true,
@@ -164,8 +154,7 @@ function detectCirclingPattern(positions, config) {
             lastSignificantTrack = positions[i].track;
         }
     }
-    const detected =
-        headingChanges >= config.patterns.circling.minHeadingChanges && Math.abs(totalHeadingChange) >= config.patterns.circling.minTotalHeadingChange;
+    const detected = headingChanges >= config.patterns.circling.minHeadingChanges && Math.abs(totalHeadingChange) >= config.patterns.circling.minTotalHeadingChange;
     return {
         detected,
         headingChanges,
@@ -205,9 +194,8 @@ function detectHoveringPattern(positions, config, aircraftCategory) {
     const speedVariation = maxSpeed - minSpeed;
     const centerLat = lats.reduce((a, b) => a + b, 0) / lats.length,
         centerLon = lons.reduce((a, b) => a + b, 0) / lons.length;
-    const positionVariation = Math.max(...positions.map((p) => helpers.calculateDistance(centerLat, centerLon, p.lat, p.lon)));
-    const detected =
-        speedVariation <= config.patterns.hovering.maxSpeedVariation && positionVariation <= config.patterns.hovering.maxPositionVariation && avgSpeed < 50; // Hovering typically < 50 kts
+    const positionVariation = Math.max(...positions.map((p) => tools.calculateDistance(centerLat, centerLon, p.lat, p.lon).distance));
+    const detected = speedVariation <= config.patterns.hovering.maxSpeedVariation && positionVariation <= config.patterns.hovering.maxPositionVariation && avgSpeed < 50; // Hovering typically < 50 kts
     return {
         detected,
         avgSpeed,
@@ -236,11 +224,7 @@ function calculateLoiteringScore(analysis, patterns, config, categoryBonus = 0) 
         const altitudeVariation = Math.max(...altitudes) - Math.min(...altitudes);
         const altitudeScore = Math.max(0, 1 - altitudeVariation / 1000); // 1000 ft variation = 0 score
         // 4. Calculate weighted score
-        const score =
-            boundingBoxScore * weights.boundingBoxRatio +
-            patternScore * weights.patternMatch +
-            altitudeScore * weights.consistentAltitude +
-            categoryBonus * weights.aircraftType;
+        const score = boundingBoxScore * weights.boundingBoxRatio + patternScore * weights.patternMatch + altitudeScore * weights.consistentAltitude + categoryBonus * weights.aircraftType;
         return {
             score: Math.min(1, score),
             components: {
@@ -258,12 +242,12 @@ function calculateLoiteringScore(analysis, patterns, config, categoryBonus = 0) 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function detectLoitering(config, aircraft) {
+function detectLoitering(config, aircraft, aircraftData) {
     // Stage 1: Quick filters
     const quickCheck = quickFilterCheck(config, aircraft);
     if (!quickCheck.pass) return { isLoitering: false, stage: 1, reason: quickCheck.reason };
     // Stage 2: Bounding box analysis
-    const boundingAnalysis = analyzeBoundingBox(aircraft.calculated.trajectoryData, config);
+    const boundingAnalysis = analyzeBoundingBox(aircraftData, config);
     if (!boundingAnalysis.pass) return { isLoitering: false, stage: 2, reason: boundingAnalysis.reason };
     // Stage 3: Pattern detection
     const patterns = {
@@ -307,9 +291,9 @@ module.exports = {
         this.conf = { ...LOITERING_CONFIG, ...conf };
         this.extra = extra;
     },
-    preprocess: (aircraft) => {
+    preprocess: (aircraft, { aircraftData }) => {
         aircraft.calculated.loitering = { isLoitering: false };
-        const loitering = detectLoitering(this.conf, aircraft);
+        const loitering = detectLoitering(this.conf, aircraft, aircraftData);
         if (loitering) aircraft.calculated.loitering = loitering;
     },
     evaluate: (aircraft) => aircraft.calculated.loitering.isLoitering,
@@ -320,9 +304,7 @@ module.exports = {
         return b_.duration - a_.duration;
     },
     getStats: (aircrafts, list) => {
-        const byPattern = list
-            .map((a) => a.calculated.loitering.pattern)
-            .reduce((counts, pattern) => ({ ...counts, [pattern]: (counts[pattern] || 0) + 1 }), {});
+        const byPattern = list.map((a) => a.calculated.loitering.pattern).reduce((counts, pattern) => ({ ...counts, [pattern]: (counts[pattern] || 0) + 1 }), {});
         const byCategory = list
             .filter((a) => a.category)
             .map((a) => a.category)
@@ -356,6 +338,7 @@ module.exports = {
     debug: (type, aircraft) => {
         const { loitering } = aircraft.calculated;
         if (type == 'sorting') return `score=${loitering.score.toFixed(2)}, duration=${loitering.duration}min`;
+        return undefined;
     },
 };
 

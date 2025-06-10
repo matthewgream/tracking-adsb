@@ -8,5 +8,5 @@ eslint.config.mjs
 node_modules
 package-lock.json
 *.csv
-.*.cache
+.cache*
 .prettierrc.json

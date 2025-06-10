@@ -71,9 +71,7 @@ function detectGroundTestingMismatch(tools, aircraft, squawkMatches) {
 
 function detectMilitarySquawkMismatch(tools, aircraft, squawkMatches) {
     // Check if using military squawk without military flight prefix
-    const militarySquawk = squawkMatches.find(
-        (match) => match.type === 'military' || (match.description && match.description.some((desc) => desc.toLowerCase().includes('military')))
-    );
+    const militarySquawk = squawkMatches.find((match) => match.type === 'military' || (match.description && match.description.some((desc) => desc.toLowerCase().includes('military'))));
     if (militarySquawk && !aircraft.calculated?.is_military)
         return {
             type: 'military-squawk-civilian',
@@ -385,12 +383,7 @@ function detectMilitaryLowLevelMisuse(tools, aircraft, squawkMatches) {
 
 function detectHelicopterCodeMismatch(tools, aircraft, squawkMatches) {
     const heliMatch = squawkMatches.find(
-        (match) =>
-            match.type === 'helicopter' ||
-            (match.description &&
-                match.description.some(
-                    (desc) => desc.toLowerCase().includes('helicopter') || desc.toLowerCase().includes('rotary') || desc.toLowerCase().includes('hems')
-                ))
+        (match) => match.type === 'helicopter' || (match.description && match.description.some((desc) => desc.toLowerCase().includes('helicopter') || desc.toLowerCase().includes('rotary') || desc.toLowerCase().includes('hems')))
     );
     if (heliMatch && aircraft.category && aircraft.category !== 'A7') {
         // Special case: HEMS codes might be on fixed-wing air ambulances
@@ -409,9 +402,7 @@ function detectHelicopterCodeMismatch(tools, aircraft, squawkMatches) {
 
 function detectLightAircraftCodeMismatch(tools, aircraft, squawkMatches) {
     // Check for glider towing codes
-    const gliderMatch = squawkMatches.find((match) =>
-        match.description?.some((desc) => desc.toLowerCase().includes('glider') || desc.toLowerCase().includes('towing'))
-    );
+    const gliderMatch = squawkMatches.find((match) => match.description?.some((desc) => desc.toLowerCase().includes('glider') || desc.toLowerCase().includes('towing')));
     if (gliderMatch) {
         // Glider towing should be light aircraft or gliders
         if (aircraft.category && !['A1', 'B1', 'B4'].includes(aircraft.category))
@@ -459,11 +450,7 @@ function detectUAVCategoryAnomalies(tools, aircraft, squawkMatches) {
     if (aircraft.category === 'B6') {
         // UAV/Drone
         // Check if using manned aircraft codes
-        const mannedCodes = squawkMatches.find(
-            (match) =>
-                ['military', 'royal', 'police', 'hems'].includes(match.type) &&
-                !match.description?.some((desc) => desc.toLowerCase().includes('uas') || desc.toLowerCase().includes('unmanned'))
-        );
+        const mannedCodes = squawkMatches.find((match) => ['military', 'royal', 'police', 'hems'].includes(match.type) && !match.description?.some((desc) => desc.toLowerCase().includes('uas') || desc.toLowerCase().includes('unmanned')));
         if (mannedCodes)
             return {
                 type: 'uav-manned-aircraft-code',
@@ -487,11 +474,7 @@ function detectUAVCategoryAnomalies(tools, aircraft, squawkMatches) {
 
 function detectAircraftSizeMismatch(tools, aircraft, squawkMatches) {
     // Check for light aircraft specific codes
-    const lightMatch = squawkMatches.find((match) =>
-        match.description?.some(
-            (desc) => desc.toLowerCase().includes('light aircraft') || desc.toLowerCase().includes('microlight') || desc.toLowerCase().includes('ultralight')
-        )
-    );
+    const lightMatch = squawkMatches.find((match) => match.description?.some((desc) => desc.toLowerCase().includes('light aircraft') || desc.toLowerCase().includes('microlight') || desc.toLowerCase().includes('ultralight')));
     if (lightMatch && aircraft.category && ['A3', 'A4', 'A5'].includes(aircraft.category))
         return {
             type: 'heavy-aircraft-light-code',
@@ -529,70 +512,62 @@ function detectParachutingCodeValidation(tools, aircraft, squawkMatches) {
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function detectDescriptionBasedAnomalies(tools, aircraft, squawkMatches) {
-    const anomalies = [];
-
-    squawkMatches.forEach((match) => {
-        if (!match.description) return;
-        match.description.forEach((desc) => {
-            const lowerDesc = desc.toLowerCase();
-            // Check for "shall only be selected with ATC direction"
-            if (lowerDesc.includes('shall only be selected with atc direction') || lowerDesc.includes('only be selected with atc direction')) {
-                // These codes shouldn't be used casually
-                if (aircraft.category && ['B1', 'B4'].includes(aircraft.category))
-                    anomalies.push({
-                        type: 'atc-directed-code-light-aircraft',
-                        severity: 'medium',
-                        details: `ATC-directed code ${aircraft.squawk} on ${tools.format.formatCategoryCode(aircraft.category)}`,
-                        description: 'Restricted code on recreational aircraft',
-                    });
-            }
-            // Check for distance restrictions (e.g., "within 20 NM")
-            if (lowerDesc.match(/within (\d+) nm/i) && aircraft.gs > 250)
-                anomalies.push({
-                    type: 'local-code-high-speed',
-                    severity: 'low',
-                    details: `Local area code ${aircraft.squawk} at ${aircraft.gs} kts`,
-                    description: 'Distance-restricted code on fast aircraft',
-                });
-            // Check for altitude restrictions
-            const altMatch = lowerDesc.match(/(?:below|under) (?:fl\s*)?(\d+)/i);
-            if (altMatch) {
-                const maxAlt = Number.parseInt(altMatch[1]) * (altMatch[0].includes('fl') ? 100 : 1);
-                if (aircraft.alt_baro > maxAlt)
-                    anomalies.push({
-                        type: 'altitude-restricted-code',
-                        severity: 'high',
-                        details: `Code ${aircraft.squawk} above ${maxAlt} ft restriction`,
-                        description: 'Altitude-restricted code exceeded',
-                    });
-            }
-            // Check for specific aircraft type requirements
-            if (lowerDesc.includes('helicopter') && aircraft.category !== 'A7')
-                anomalies.push({
-                    type: 'helicopter-only-code',
-                    severity: 'high',
-                    details: `Helicopter-only code on ${tools.format.formatCategoryCode(aircraft.category)}`,
-                    description: 'Rotorcraft-specific code misuse',
-                });
-            // Check for "conspicuity" codes being used with discrete services
-            // Has a proper callsign, might be receiving service
-            if (
-                lowerDesc.includes('conspicuity') &&
-                aircraft.flight &&
-                !aircraft.flight.includes('[') &&
-                ['approach', 'tower', 'radar'].some((service) => squawkMatches.some((m) => m.type === service))
-            )
-                anomalies.push({
-                    type: 'conspicuity-with-service',
-                    severity: 'low',
-                    details: `Conspicuity code ${aircraft.squawk} with apparent ATC service`,
-                    description: 'Conspicuity code possibly receiving service',
-                });
+function findDescriptionBasedAnomaly(lowerDesc, tools, aircraft, squawkMatches) {
+    const matches = [];
+    // Check for "shall only be selected with ATC direction"
+    if (lowerDesc.includes('shall only be selected with atc direction') || lowerDesc.includes('only be selected with atc direction')) {
+        // These codes shouldn't be used casually
+        if (aircraft.category && ['B1', 'B4'].includes(aircraft.category))
+            matches.push({
+                type: 'atc-directed-code-light-aircraft',
+                severity: 'medium',
+                details: `ATC-directed code ${aircraft.squawk} on ${tools.format.formatCategoryCode(aircraft.category)}`,
+                description: 'Restricted code on recreational aircraft',
+            });
+    }
+    // Check for distance restrictions (e.g., "within 20 NM")
+    // eslint-disable-next-line unicorn/prefer-regexp-test
+    if (lowerDesc.match(/within (\d+) nm/i) && aircraft.gs > 250)
+        matches.push({
+            type: 'local-code-high-speed',
+            severity: 'low',
+            details: `Local area code ${aircraft.squawk} at ${aircraft.gs} kts`,
+            description: 'Distance-restricted code on fast aircraft',
         });
-    });
+    // Check for altitude restrictions
+    const altMatch = lowerDesc.match(/(?:below|under) (?:fl\s*)?(\d+)/i);
+    if (altMatch) {
+        const maxAlt = Number.parseInt(altMatch[1]) * (altMatch[0].includes('fl') ? 100 : 1);
+        if (aircraft.alt_baro > maxAlt)
+            matches.push({
+                type: 'altitude-restricted-code',
+                severity: 'high',
+                details: `Code ${aircraft.squawk} above ${maxAlt} ft restriction`,
+                description: 'Altitude-restricted code exceeded',
+            });
+    }
+    // Check for specific aircraft type requirements
+    if (lowerDesc.includes('helicopter') && aircraft.category !== 'A7')
+        matches.push({
+            type: 'helicopter-only-code',
+            severity: 'high',
+            details: `Helicopter-only code on ${tools.format.formatCategoryCode(aircraft.category)}`,
+            description: 'Rotorcraft-specific code misuse',
+        });
+    // Check for "conspicuity" codes being used with discrete services
+    // Has a proper callsign, might be receiving service
+    if (lowerDesc.includes('conspicuity') && aircraft.flight && !aircraft.flight.includes('[') && ['approach', 'tower', 'radar'].some((service) => squawkMatches.some((m) => m.type === service)))
+        matches.push({
+            type: 'conspicuity-with-service',
+            severity: 'low',
+            details: `Conspicuity code ${aircraft.squawk} with apparent ATC service`,
+            description: 'Conspicuity code possibly receiving service',
+        });
+    return matches;
+}
 
-    return anomalies.length > 0 ? anomalies[0] : undefined; // Return most relevant
+function detectDescriptionBasedAnomalies(tools, aircraft, squawkMatches) {
+    return squawkMatches.filter((match) => match.description).flatMap((match) => match.description.map((desc) => findDescriptionBasedAnomaly(desc.toLowerCase(), tools, aircraft, squawkMatches)));
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -705,14 +680,13 @@ module.exports = {
                 detectDescriptionBasedAnomalies(this.extra, aircraft, matches),
                 detectSAROperationsValidation(this.extra, aircraft, matches),
                 detectTrainingCodeValidation(this.extra, aircraft, matches),
-            ].filter(Boolean);
+            ]
+                .filter(Boolean)
+                .flat(Infinity);
             if (anomalies.length === 0) return;
             aircraft.calculated.squawk.hasAnomalies = true;
             aircraft.calculated.squawk.anomalies = anomalies;
-            aircraft.calculated.squawk.highestSeverity = anomalies.reduce(
-                (highest, current) => (severityRank[current.severity] > severityRank[highest] ? current.severity : highest),
-                'low'
-            );
+            aircraft.calculated.squawk.highestSeverity = anomalies.reduce((highest, current) => (severityRank[current.severity] > severityRank[highest] ? current.severity : highest), 'low');
         }
     },
     evaluate: (aircraft) => aircraft.calculated.squawk.isInteresting || aircraft.calculated.squawk.hasAnomalies,
@@ -732,14 +706,10 @@ module.exports = {
         return aTypePriority - bTypePriority;
     },
     getStats: (aircrafts, list) => {
-        const byType = list
-            .flatMap((a) => a.calculated.squawk.matches.map((m) => m.type))
-            .reduce((counts, type) => ({ ...counts, [type]: (counts[type] || 0) + 1 }), {});
+        const byType = list.flatMap((a) => a.calculated.squawk.matches.map((m) => m.type)).reduce((counts, type) => ({ ...counts, [type]: (counts[type] || 0) + 1 }), {});
         const byCode = list.map((a) => a.squawk).reduce((counts, squawk) => ({ ...counts, [squawk]: (counts[squawk] || 0) + 1 }), {});
         const withAnomalies = list.filter((a) => a.calculated.squawk.hasAnomalies);
-        const anomalyTypes = withAnomalies
-            .flatMap((a) => a.calculated.squawk.anomalies.map((an) => an.type))
-            .reduce((counts, type) => ({ ...counts, [type]: (counts[type] || 0) + 1 }), {});
+        const anomalyTypes = withAnomalies.flatMap((a) => a.calculated.squawk.anomalies.map((an) => an.type)).reduce((counts, type) => ({ ...counts, [type]: (counts[type] || 0) + 1 }), {});
         return {
             total: list.length,
             byType,
@@ -790,6 +760,7 @@ module.exports = {
             if (squawk.hasAnomalies) return `anomaly=${squawk.highestSeverity}`;
             return `type=${squawk.matches[0]?.type || 'unknown'}`;
         }
+        return undefined;
     },
 };
 

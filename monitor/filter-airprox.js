@@ -2,6 +2,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const helpers = require('./filter-helpers.js');
+const tools = require('./tools-geometry.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -12,11 +13,11 @@ const DEFAULT_CLOSURE_RATE_THRESHOLD = 400; // knots - high closure rate increas
 
 function calculateRiskCategory(horizontalDistance, verticalSeparation, closureRate) {
     let riskCategory;
-    if (horizontalDistance < helpers.nmToKm(0.25) && verticalSeparation < 500)
+    if (horizontalDistance < tools.nmToKm(0.25).value && verticalSeparation < 500)
         riskCategory = 'A'; // Serious risk of collision
-    else if (horizontalDistance < helpers.nmToKm(0.5) && verticalSeparation < 500)
+    else if (horizontalDistance < tools.nmToKm(0.5).value && verticalSeparation < 500)
         riskCategory = 'B'; // Safety not assured
-    else if (horizontalDistance < helpers.nmToKm(1))
+    else if (horizontalDistance < tools.nmToKm(1).value)
         riskCategory = 'C'; // No risk of collision
     else riskCategory = 'D'; // Risk not determined
     if (closureRate && closureRate > DEFAULT_CLOSURE_RATE_THRESHOLD) {
@@ -34,14 +35,14 @@ function detectAirprox(conf, aircraft, aircraftList) {
     if (aircraft.lat == undefined || aircraft.lon == undefined || !aircraft.calculated.altitude) return undefined;
     if (aircraft.calculated?.airports_nearby?.hasAirportsNearby) return undefined; // XXX should be only ATC controlled
 
-    const horizontalThresholdKm = helpers.nmToKm(horizontalThreshold);
+    const horizontalThresholdKm = tools.nmToKm(horizontalThreshold).value;
     const proximateAircraft = aircraftList.filter((other) => {
         if (other.calculated.airprox) return false;
         if (other.hex === aircraft.hex) return false;
         if (other.calculated?.airports_nearby?.hasAirportsNearby) return false;
         if (other.lat === undefined || other.lon === undefined || !other.calculated?.altitude) return false;
 
-        const horizontalDistance = helpers.calculateDistance(aircraft.lat, aircraft.lon, other.lat, other.lon);
+        const horizontalDistance = tools.calculateDistance(aircraft.lat, aircraft.lon, other.lat, other.lon).distance;
         if (horizontalDistance > horizontalThresholdKm) return false;
         const verticalSeparation = Math.abs(aircraft.calculated.altitude - other.calculated.altitude);
         if (verticalSeparation > verticalThreshold) return false;
@@ -49,10 +50,8 @@ function detectAirprox(conf, aircraft, aircraftList) {
     });
     if (proximateAircraft.length === 0) return undefined;
 
-    const [otherAircraft] = proximateAircraft.sort(
-        (a, b) => helpers.calculateDistance(aircraft.lat, aircraft.lon, a.lat, a.lon) - helpers.calculateDistance(aircraft.lat, aircraft.lon, b.lat, b.lon)
-    );
-    const horizontalDistance = helpers.calculateDistance(aircraft.lat, aircraft.lon, otherAircraft.lat, otherAircraft.lon);
+    const [otherAircraft] = proximateAircraft.sort((a, b) => tools.calculateDistance(aircraft.lat, aircraft.lon, a.lat, a.lon).distance - tools.calculateDistance(aircraft.lat, aircraft.lon, b.lat, b.lon).distance);
+    const horizontalDistance = tools.calculateDistance(aircraft.lat, aircraft.lon, otherAircraft.lat, otherAircraft.lon).distance;
     const verticalSeparation = Math.abs(aircraft.calculated.altitude - otherAircraft.calculated.altitude);
     const { closureRate, closureTime } = helpers.calculateClosureDetails(aircraft, otherAircraft);
 
@@ -81,7 +80,7 @@ module.exports = {
         this.conf = conf;
         this.extra = extra;
     },
-    preprocess: (aircraft, aircraftList) => {
+    preprocess: (aircraft, { aircraftList }) => {
         aircraft.calculated.airprox = { hasAirprox: false };
         const airprox = detectAirprox(this.conf, aircraft, aircraftList);
         if (airprox) aircraft.calculated.airprox = airprox;
@@ -95,9 +94,7 @@ module.exports = {
         return a_.verticalSeparation - b_.verticalSeparation;
     },
     getStats: (aircrafts, list) => {
-        const byCategory = list
-            .map((aircraft) => aircraft.calculated.airprox.riskCategory)
-            .reduce((counts, category) => ({ ...counts, [category]: (counts[category] || 0) + 1 }), {});
+        const byCategory = list.map((aircraft) => aircraft.calculated.airprox.riskCategory).reduce((counts, category) => ({ ...counts, [category]: (counts[category] || 0) + 1 }), {});
         return {
             categoryA: byCategory.A || 0,
             categoryB: byCategory.B || 0,
@@ -130,6 +127,7 @@ module.exports = {
     debug: (type, aircraft) => {
         const { airprox } = aircraft.calculated;
         if (type == 'sorting') return `risk=${airprox.riskCategory}, dist=${airprox.horizontalDistance.toFixed(1)}km, vsep=${airprox.verticalSeparation}ft`;
+        return undefined;
     },
 };
 

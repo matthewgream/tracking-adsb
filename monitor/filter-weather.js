@@ -102,9 +102,7 @@ function detectIcingConditions(config, aircraft) {
     if (aircraft.oat === undefined || !aircraft.calculated?.altitude) return undefined;
     const inIcingTemp = aircraft.oat >= config.temperatureRange.min && aircraft.oat <= config.temperatureRange.max;
     if (!inIcingTemp) return undefined;
-    const altitudeBand = config.altitudeBands.find(
-        (band) => aircraft.calculated.altitude >= band.minAltitude && aircraft.calculated.altitude <= band.maxAltitude
-    );
+    const altitudeBand = config.altitudeBands.find((band) => aircraft.calculated.altitude >= band.minAltitude && aircraft.calculated.altitude <= band.maxAltitude);
     if (altitudeBand)
         return {
             type: 'potential-icing',
@@ -118,11 +116,7 @@ function detectSevereIcingRisk(config, aircraft) {
     if (!config.enabled) return undefined;
     if (aircraft.oat === undefined || !aircraft.calculated?.altitude) return undefined;
     const { sldConditions } = config;
-    if (
-        aircraft.oat >= sldConditions.temperatureRange.min &&
-        aircraft.oat <= sldConditions.temperatureRange.max &&
-        aircraft.calculated.altitude <= sldConditions.maxAltitude
-    )
+    if (aircraft.oat >= sldConditions.temperatureRange.min && aircraft.oat <= sldConditions.temperatureRange.max && aircraft.calculated.altitude <= sldConditions.maxAltitude)
         return {
             type: 'severe-icing',
             severity: sldConditions.severity,
@@ -131,24 +125,28 @@ function detectSevereIcingRisk(config, aircraft) {
     return undefined;
 }
 
-function detectTurbulence(config, verticalRates) {
+function detectTurbulence(config, aircraftData) {
     if (!config.enabled) return undefined;
-    if (!verticalRates || verticalRates.length < config.minimumDataPoints) return undefined;
+
+    const { values: verticalRates } = aircraftData.getField('baro_rate', {
+        minDataPoints: config.minimumDataPoints,
+    });
+
+    if (verticalRates.length < config.minimumDataPoints) return undefined;
+
     const maxRate = Math.max(...verticalRates),
         minRate = Math.min(...verticalRates),
         variation = maxRate - minRate;
     if (variation > config.variationThreshold) {
-        const average = verticalRates.reduce((sum, rate) => sum + rate, 0) / verticalRates.length,
-            variance = verticalRates.reduce((sum, rate) => sum + (rate - average) ** 2, 0) / verticalRates.length,
-            standardDeviation = Math.sqrt(variance),
-            severityBand = config.severityBands.find((band) => standardDeviation <= band.maxStdDev);
+        const stats = aircraftData.getStats('baro_rate');
+        const severityBand = config.severityBands.find((band) => stats.stdDev <= band.maxStdDev);
         if (severityBand)
             return {
                 type: 'turbulence',
                 severity: severityBand.severity,
-                details: `${severityBand.description}: vertical rate σ=${standardDeviation.toFixed(0)} ft/min`,
+                details: `${severityBand.description}: vertical rate σ=${stats.stdDev.toFixed(0)} ft/min`,
                 debug: {
-                    standardDeviation,
+                    standardDeviation: stats.stdDev,
                     variation,
                     dataPoints: verticalRates.length,
                 },
@@ -203,38 +201,12 @@ function detectTemperatureInversion(config, aircraft) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function calculateVariables(aircraft) {
-    const trajectoryData = aircraft.calculated?.trajectoryData || [];
-    const verticalRates = [],
-        timestamps = [];
-    trajectoryData.forEach((entry) => {
-        const { snapshot, timestamp } = entry;
-        if (snapshot.baro_rate !== undefined) {
-            verticalRates.push(snapshot.baro_rate);
-            timestamps.push(timestamp);
-        }
-    });
-    const lastSnapshot = trajectoryData[trajectoryData.length - 1]?.snapshot;
-    const now = Date.now();
-    if (aircraft.baro_rate !== undefined && (!lastSnapshot || lastSnapshot.baro_rate !== aircraft.baro_rate)) {
-        verticalRates.push(aircraft.baro_rate);
-        timestamps.push(now);
-    }
-    return {
-        verticalRates,
-        timestamps,
-    };
-}
-
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-function detectWeather(config, aircraft) {
+function detectWeather(config, aircraft, aircraftData) {
     if (!aircraft.hex) return undefined;
-    const variables = calculateVariables(aircraft);
     const conditions = [
         detectIcingConditions(config.icingConditions, aircraft),
         detectSevereIcingRisk(config.severeIcing, aircraft),
-        detectTurbulence(config.turbulence, variables.verticalRates),
+        detectTurbulence(config.turbulence, aircraftData),
         detectStrongWinds(config.strongWinds, aircraft),
         detectTemperatureInversion(config.temperatureInversion, aircraft),
     ].filter(Boolean);
@@ -245,7 +217,6 @@ function detectWeather(config, aircraft) {
         highestSeverity: conditions.reduce((highest, current) => (severityRank[current.severity] > severityRank[highest] ? current.severity : highest), 'low'),
     };
 }
-
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -260,9 +231,9 @@ module.exports = {
         this.conf = Object.fromEntries(Object.entries(configDefault).map(([module, config]) => [module, { ...config, ...conf[module] }]));
         this.extra = extra;
     },
-    preprocess: (aircraft) => {
+    preprocess: (aircraft, { aircraftData }) => {
         aircraft.calculated.weather = { inWeatherOperation: false };
-        const weather = detectWeather(this.conf, aircraft);
+        const weather = detectWeather(this.conf, aircraft, aircraftData);
         if (weather) aircraft.calculated.weather = weather;
     },
     evaluate: (aircraft) => aircraft.calculated.weather.inWeatherOperation,
@@ -272,12 +243,8 @@ module.exports = {
         return severityRank[b_.highestSeverity] - severityRank[a_.highestSeverity];
     },
     getStats: (aircrafts, list) => {
-        const byCondition = list
-            .flatMap((a) => a.calculated.weather.conditions.map((c) => c.type))
-            .reduce((counts, type) => ({ ...counts, [type]: (counts[type] || 0) + 1 }), {});
-        const bySeverity = list
-            .map((a) => a.calculated.weather.highestSeverity)
-            .reduce((counts, severity) => ({ ...counts, [severity]: (counts[severity] || 0) + 1 }), {});
+        const byCondition = list.flatMap((a) => a.calculated.weather.conditions.map((c) => c.type)).reduce((counts, type) => ({ ...counts, [type]: (counts[type] || 0) + 1 }), {});
+        const bySeverity = list.map((a) => a.calculated.weather.highestSeverity).reduce((counts, severity) => ({ ...counts, [severity]: (counts[severity] || 0) + 1 }), {});
         return {
             highSeverityCount: bySeverity.high || 0,
             mediumSeverityCount: bySeverity.medium || 0,
@@ -308,6 +275,7 @@ module.exports = {
     debug: (type, aircraft) => {
         const { weather } = aircraft.calculated;
         if (type == 'sorting') return `severity=${weather.highestSeverity}, count=${weather.conditions.length}`;
+        return undefined;
     },
 };
 

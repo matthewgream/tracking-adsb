@@ -5,10 +5,17 @@ const helpers = require('./filter-helpers.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function detectLanding(conf, extra, aircraft) {
+function detectLanding(conf, extra, aircraft, aircraftData) {
     if (aircraft.calculated?.altitude === undefined || aircraft.calculated?.distance === undefined) return undefined;
     const { lat, lon } = extra.data.location;
-    const landing = helpers.calculateLandingTrajectory(lat, lon, conf.radius, aircraft);
+    // Pass aircraftData to get trajectory data for the helper
+    const trajectoryData = aircraftData
+        ? {
+              positions: aircraftData.getPositions(),
+              descentRates: aircraftData.getField('baro_rate').values,
+          }
+        : undefined;
+    const landing = helpers.calculateLandingTrajectory(lat, lon, conf.radius, aircraft, trajectoryData);
     if (landing?.isLanding) {
         landing.airports = extra.data.airports.findNearby(landing.groundLat, landing.groundLon);
         landing.isPossibleLanding = landing.airports.length > 0;
@@ -28,9 +35,9 @@ module.exports = {
         this.conf = conf;
         this.extra = extra;
     },
-    preprocess: (aircraft) => {
+    preprocess: (aircraft, { aircraftData }) => {
         aircraft.calculated.landing = { isLanding: false };
-        const landing = detectLanding(this.conf, this.extra, aircraft);
+        const landing = detectLanding(this.conf, this.extra, aircraft, aircraftData);
         if (landing) aircraft.calculated.landing = landing;
     },
     evaluate: (aircraft) => aircraft.calculated.landing.isLanding,
@@ -39,7 +46,8 @@ module.exports = {
             b_ = b.calculated.landing;
         if (a_.isPossibleLanding !== b_.isPossibleLanding) return b_.isPossibleLanding ? 1 : -1;
         const diff = a_.groundSeconds - b_.groundSeconds;
-        return diff > 0 ? 1 : diff < 0 ? -1 : 0;
+        if (diff == 0) return 0;
+        return diff > 0 ? 1 : -1;
     },
     getStats: (aircrafts, list) => ({
         landingCount: list.filter((a) => a.calculated.landing.isPossibleLanding).length,
@@ -66,6 +74,7 @@ module.exports = {
     debug: (type, aircraft) => {
         const { landing } = aircraft.calculated;
         if (type == 'sorting') return `${landing.isPossibleLanding ? 'known' : 'unknown'}, ${landing.groundSeconds}s`;
+        return undefined;
     },
 };
 

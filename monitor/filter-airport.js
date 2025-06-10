@@ -35,9 +35,7 @@ module.exports = {
         return b_.airports.length - a_.airports.length;
     },
     getStats: (aircrafts, list) => {
-        const byAirport = list
-            .map((aircraft) => aircraft.calculated.airports_nearby.airports[0].icao_code)
-            .reduce((counts, icao_code) => ({ ...counts, [icao_code]: (counts[icao_code] || 0) + 1 }), {});
+        const byAirport = list.map((aircraft) => aircraft.calculated.airports_nearby.airports[0].icao_code).reduce((counts, icao_code) => ({ ...counts, [icao_code]: (counts[icao_code] || 0) + 1 }), {});
         return {
             byAirport,
         };
@@ -53,6 +51,7 @@ module.exports = {
     debug: (type, aircraft) => {
         const { airports_nearby } = aircraft.calculated;
         if (type == 'sorting') return `airports=${airports_nearby.airports.length}`;
+        return undefined;
     },
 };
 

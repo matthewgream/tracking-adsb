@@ -93,6 +93,7 @@ module.exports = {
     }),
     debug: (type, _aircraft) => {
         if (type == 'sorting') return undefined;
+        return undefined;
     },
 };
 

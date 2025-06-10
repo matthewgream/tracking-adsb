@@ -69,9 +69,7 @@ module.exports = {
         return this.conf.priorities[a_.matches[0].category] - this.conf.priorities[b_.matches[0].category];
     },
     getStats: (aircrafts, list) => {
-        const byCategory = list
-            .map((aircraft) => aircraft.calculated.specific.matches[0].category)
-            .reduce((counts, category) => ({ ...counts, [category]: (counts[category] || 0) + 1 }), {});
+        const byCategory = list.map((aircraft) => aircraft.calculated.specific.matches[0].category).reduce((counts, category) => ({ ...counts, [category]: (counts[category] || 0) + 1 }), {});
         return {
             byCategory,
         };
@@ -96,6 +94,7 @@ module.exports = {
     debug: (type, aircraft) => {
         const { specific } = aircraft.calculated;
         if (type == 'sorting') return `${specific.matches[0].category} (pri=${this.conf.priorities[specific.matches[0].category]})`;
+        return undefined;
     },
 };
 

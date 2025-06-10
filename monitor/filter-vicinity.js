@@ -1,7 +1,8 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const helpers = require('./filter-helpers.js');
+//const helpers = require('./filter-helpers.js');
+const tools = require('./tools-geometry.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -33,7 +34,7 @@ module.exports = {
     format: (aircraft) => {
         const { positionRelative } = aircraft.calculated;
         const direction = positionRelative ? `${positionRelative.cardinalBearing} direction` : 'nearby';
-        const trackInfo = aircraft.track ? ` tracking ${helpers.bearing2Cardinal(aircraft.track)}` : '';
+        const trackInfo = aircraft.track ? ` tracking ${tools.bearingToCardinal(aircraft.track)}` : '';
         return {
             text: `nearby, look ${direction}${trackInfo}`,
             warn: true,
@@ -41,6 +42,7 @@ module.exports = {
     },
     debug: (type, _aircraft) => {
         if (type == 'sorting') return undefined;
+        return undefined;
     },
 };
 

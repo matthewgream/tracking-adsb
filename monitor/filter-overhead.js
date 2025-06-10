@@ -5,13 +5,20 @@ const helpers = require('./filter-helpers.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function detectOverhead(conf, extra, aircraft) {
+function detectOverhead(conf, extra, aircraft, aircraftData) {
     const { lat, lon, alt } = extra.data.location;
-    const overhead = helpers.calculateOverheadTrajectory(lat, lon, alt || 0, aircraft);
+    // Pass aircraftData to get trajectory data for the helper
+    const trajectoryData = aircraftData
+        ? {
+              positions: aircraftData.getPositions(),
+              tracks: aircraftData.getField('track').values,
+              altitudes: aircraftData.getField('calculated.altitude').values,
+          }
+        : undefined;
+    const overhead = helpers.calculateOverheadTrajectory(lat, lon, alt || 0, aircraft, trajectoryData);
     if (!overhead?.willIntersectOverhead) return undefined;
     if (aircraft.calculated?.distance !== undefined && aircraft.calculated.distance > conf.distance) return undefined;
-    if (Math.abs(overhead.overheadDistance) > conf.radius || Math.abs(overhead.overheadSeconds) > conf.time || overhead.overheadAltitude > conf.altitude)
-        return undefined;
+    if (Math.abs(overhead.overheadDistance) > conf.radius || Math.abs(overhead.overheadSeconds) > conf.time || overhead.overheadAltitude > conf.altitude) return undefined;
     return overhead;
 }
 
@@ -26,9 +33,9 @@ module.exports = {
         this.conf = conf;
         this.extra = extra;
     },
-    preprocess: (aircraft) => {
+    preprocess: (aircraft, { aircraftData }) => {
         aircraft.calculated.overhead = { willIntersectOverhead: false };
-        const overhead = detectOverhead(this.conf, this.extra, aircraft);
+        const overhead = detectOverhead(this.conf, this.extra, aircraft, aircraftData);
         if (overhead) aircraft.calculated.overhead = overhead;
     },
     evaluate: (aircraft) => aircraft.calculated.overhead.willIntersectOverhead,
@@ -46,9 +53,7 @@ module.exports = {
         const overheadTimePhrase = this.extra.format.formatTimePhrase(overheadSeconds, overheadFuture);
         const altitudeAtOverhead = this.extra.format.formatAltitude(overheadAltitude);
         const verticalAngleDescription = this.extra.format.formatVerticalAngle(verticalAngle);
-        const observationGuide = overheadFuture
-            ? `${overheadTimePhrase} at ${altitudeAtOverhead}, look ${approachCardinal} ${verticalAngleDescription}`
-            : `passed ${overheadTimePhrase} at ${altitudeAtOverhead}`;
+        const observationGuide = overheadFuture ? `${overheadTimePhrase} at ${altitudeAtOverhead}, look ${approachCardinal} ${verticalAngleDescription}` : `passed ${overheadTimePhrase} at ${altitudeAtOverhead}`;
         return {
             text: `overhead${verticalInfo}, ${observationGuide}`,
             warn: overheadFuture,
@@ -68,6 +73,7 @@ module.exports = {
     debug: (type, aircraft) => {
         const { overhead } = aircraft.calculated;
         if (type == 'sorting') return `${overhead.overheadFuture ? 'future' : 'past'}, ${overhead.overheadSeconds}s`;
+        return undefined;
     },
 };
 

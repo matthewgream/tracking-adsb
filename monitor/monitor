@@ -3,6 +3,11 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+const tools = require('./tools-geometry.js');
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 const CACHE_EXPIRY_TIME = 5 * 60;
 const ALERT_EXPIRY_TIME = 5 * 60;
 const CYCLE_SCAN_TIME = 30;
@@ -18,14 +23,21 @@ async function do_yield() {
 let mqtt;
 
 function publish(config, type, sub, data) {
-    if (mqtt && config.mqtt.publishTopics?.[type]) data.forEach((item) => mqtt.publish([config.mqtt.publishTopics[type], sub].join('/'), item));
+    if (mqtt && config.mqtt.publishTopics?.[type]) {
+        data.forEach((item) => mqtt.publish([config.mqtt.publishTopics[type], sub].join('/'), item));
+    }
 }
 
 function publishInit(config) {
     if (!mqtt && config.mqtt && config.mqtt.enabled) {
-        mqtt = require('./function-mqtt.js')(config.mqtt);
+        const { MqttClient } = require('./function-mqtt.js');
+        mqtt = new MqttClient(config.mqtt);
         mqtt.begin((topic, message) => console.error(`mqtt: received: '${topic}' => '${message}' [IGNORED]`));
-        if (mqtt) process.on('exit', () => mqtt?.end());
+
+        // Handle graceful shutdown
+        process.on('exit', async () => {
+            if (mqtt) await mqtt.end();
+        });
     }
     return {};
 }
@@ -33,10 +45,7 @@ function publishInit(config) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 function display(config, type, sub, data) {
-    if (sub == 'insert')
-        data.forEach((item) =>
-            console.log(`${item.timeFormatted} ${type.toUpperCase()}/${sub} [${item.type}] ${item.flight} ${item.text}${item.warn ? ' [NOTICE]' : ''}`)
-        );
+    if (sub == 'insert') data.forEach((item) => console.log(`${item.timeFormatted} ${type.toUpperCase()}/${sub} [${item.type}] ${item.flight} ${item.text}${item.warn ? ' [NOTICE]' : ''}`));
     //else if (sub == 'remove') data.forEach((item) => console.log(`${item} ${type.toUpperCase()}/${sub}`));
 }
 
@@ -103,7 +112,6 @@ function formatVerticalAngle(angle) {
     return 'directly overhead';
 }
 
-// eslint-disable-next-line sonarjs/cognitive-complexity
 function formatTimePhrase(seconds, isFuture) {
     const totalSecs = Math.abs(seconds);
     const mins = Math.floor(totalSecs / 60),
@@ -169,15 +177,23 @@ function formatInit() {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 function flightsInit(config) {
-    return require('./data-flights.js')({ debug: Boolean(config.debug) });
+    const { FlightDataFetcher } = require('./flights-data.js');
+    return new FlightDataFetcher({
+        retries: 5,
+        mappings: {
+            filename: './.cache-hexcodes.json',
+            expiryTime: 30 * 24 * 60 * 60 * 1000, // 30 days
+        },
+        ...config,
+    });
 }
 
 function airportsInit(config, { location, range, vicinity }) {
-    const airports = require('./data-airports.js')(config);
+    const airports = require('./airports-data.js')(config);
     const airportText = [`${airports.length()} loaded`];
     if (range) {
-        const ar = airports.findNearby(location.lat, location.lon, { distance: helpers.nmToKm(range) });
-        airportText.push(`${ar.length} in range (${range}nm/${helpers.nmToKm(range).toFixed(0)}km)`);
+        const ar = airports.findNearby(location.lat, location.lon, { distance: tools.nmToKm(range).value });
+        airportText.push(`${ar.length} in range (${range}nm/${tools.nmToKm(range).value.toFixed(0)}km)`);
     }
     if (vicinity) {
         const av = airports.findNearby(location.lat, location.lon, { distance: vicinity });
@@ -192,7 +208,7 @@ function furtherInit(config, _data) {
         Object.entries(config).map(([name, options]) => {
             let data;
             try {
-                data = require(`./data-${name}.js`)(options, { directory: '../content' });
+                data = new (require(`./data-${name}.js`))({ ...options, directory: '../content' });
                 console.error(`data [${name}]: ${data.getInfo()}`);
             } catch (e) {
                 console.error(`data [${name}]: could not be loaded:`, e);
@@ -206,7 +222,7 @@ function furtherInit(config, _data) {
 // preprocess flights by calculating or fixing up data
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const helpers = require('./filter-helpers.js');
+const { AircraftData } = require('./aircraft-data.js');
 
 function preprocessAircraft(extra, aircraftList) {
     const { lat, lon } = extra.location;
@@ -218,8 +234,8 @@ function preprocessAircraft(extra, aircraftList) {
             aircraft.calculated.position = true;
         }
         if (aircraft.lat && aircraft.lon) {
-            aircraft.calculated.distance = helpers.calculateDistance(lat, lon, aircraft.lat, aircraft.lon);
-            if (aircraft.track) aircraft.calculated.positionRelative = helpers.calculateRelativePosition(lat, lon, aircraft.lat, aircraft.lon, aircraft.track);
+            aircraft.calculated.distance = tools.calculateDistance(lat, lon, aircraft.lat, aircraft.lon).distance;
+            if (aircraft.track) aircraft.calculated.positionRelative = tools.calculateRelativePosition(lat, lon, aircraft.lat, aircraft.lon, aircraft.track);
         }
         aircraft.calculated.altitude = aircraft.alt_baro ?? aircraft.alt_geom;
         if (aircraft.calculated.altitude === 'ground') aircraft.calculated.altitude = 0;
@@ -271,7 +287,8 @@ async function filterAircraft(filters, aircraftList) {
         cycle = 50;
     const filtered = [];
     for (const aircraft of aircraftList) {
-        for (const filter of filterSet) filter.preprocess(aircraft, aircraftList);
+        const aircraftData = new AircraftData(aircraft);
+        for (const filter of filterSet) filter.preprocess(aircraft, { aircraftList, aircraftData });
         aircraft.calculated._matchedFilters = filterSet.filter((filter) => filter.evaluate(aircraft));
         if (aircraft.calculated._matchedFilters.length > 0) filtered.push(aircraft);
         if (++count % cycle === 0) await do_yield();
@@ -298,8 +315,7 @@ async function filterAircraft(filters, aircraftList) {
                     return result;
                 }
             }
-            if (config.debug?.sorting)
-                console.error(`[SORT] ${a.flight} vs ${b.flight}: common filters [${commonFilters.map((f) => f.id).join(',')}] all returned 0, using distance`);
+            if (config.debug?.sorting) console.error(`[SORT] ${a.flight} vs ${b.flight}: common filters [${commonFilters.map((f) => f.id).join(',')}] all returned 0, using distance`);
         } else {
             if (config.debug?.sorting) {
                 const aFilterNames = aFilters
@@ -310,12 +326,10 @@ async function filterAircraft(filters, aircraftList) {
                         .filter((f) => f.priority === bPriority)
                         .map((f) => f.id)
                         .join(',');
-                console.error(
-                    `[SORT] ${a.flight} vs ${b.flight}: no common filters at priority ${aPriority} (${aFilterNames} vs ${bFilterNames}), using distance`
-                );
+                console.error(`[SORT] ${a.flight} vs ${b.flight}: no common filters at priority ${aPriority} (${aFilterNames} vs ${bFilterNames}), using distance`);
             }
         }
-        return helpers.sortDistance(a, b);
+        return AircraftData.sortByDistance(a, b);
     });
 
     if (config.debug?.sorting && sorted.length > 0) {
@@ -355,8 +369,7 @@ let preprocess_exclude;
 function fixup(config, data) {
     if (config?.exclude) {
         if (!preprocess_exclude && config.exclude) preprocess_exclude = new Set(config.exclude);
-        if (preprocess_exclude && data.aircraft)
-            data.aircraft = data.aircraft.filter((aircraft) => !aircraft.flight || !preprocess_exclude.has(aircraft.flight));
+        if (preprocess_exclude && data.aircraft) data.aircraft = data.aircraft.filter((aircraft) => !aircraft.flight || !preprocess_exclude.has(aircraft.flight));
     }
     return data;
 }
@@ -372,13 +385,13 @@ async function obtain(config, flights, filters, extra) {
             receivedAircraftCount: receivedAircraft.length,
             filteredAircraftCount: filteredAircraft.length,
             filterStats: filterStats(filters, filteredAircraft),
-            mappingStats: flights.stats(),
+            flights: flights.getStats(),
         };
         const now = Date.now();
         aircraft.forEach((a) => (a.calculated.timestamp_updated = now));
         return { data: { ...data, aircraft }, stat, filteredAircraft };
     } catch (e) {
-        console.log(e);
+        console.error(e);
         return {
             stat: {
                 error: e.message,
@@ -534,18 +547,14 @@ function alertsBuilder(config, filters, processedData, stats) {
         alertsInserted: alerts,
         alertsRemoved,
         alertsActive: Object.values(alertsActive),
-        alertsStats: Object.entries(Object.values(alertsActive).reduce((list, alert) => ({ ...list, [alert.type]: (list[alert.type] || 0) + 1 }), {})).sort(
-            (a, b) => filterMap[a[0]].priority - filterMap[b[0]].priority
-        ),
+        alertsStats: Object.entries(Object.values(alertsActive).reduce((list, alert) => ({ ...list, [alert.type]: (list[alert.type] || 0) + 1 }), {})).sort((a, b) => filterMap[a[0]].priority - filterMap[b[0]].priority),
     };
 }
 
 function alertMeta(format, aircraft) {
     const aircraftType = aircraft.category || '';
     const priorityType =
-        aircraft.calculated.emergency.hasEmergency ||
-        aircraft.calculated.military.isMilitary ||
-        (aircraft.calculated.vicinity.isProximate && (aircraft.calculated.landing.isLanding || aircraft.calculated.lifting.isLifting));
+        aircraft.calculated.emergency.hasEmergency || aircraft.calculated.military.isMilitary || (aircraft.calculated.vicinity.isProximate && (aircraft.calculated.landing.isLanding || aircraft.calculated.lifting.isLifting));
 
     const { positionRelative: position, distance, altitude } = aircraft.calculated;
     const positionInfo = position ? ` (${distance.toFixed(1)}km ${position.cardinalBearing} ${formatAltitude(altitude)})` : '';
@@ -574,15 +583,44 @@ function stats(config, { flights, alerts, system }) {
     const time = new Date();
 
     const stats = { time: time.getTime(), timeFormatted: time.toISOString() };
+
     if (flights) {
-        const { receivedAircraftCount: received, filteredAircraftCount: filtered, mappingStats: mappings } = flights;
+        const { receivedAircraftCount: received, filteredAircraftCount: filtered, flights: flightStats, error } = flights;
         const cached = Object.keys(flightCache).length;
         const stored = flightHistoryStats();
-        stats.flights = { received, filtered, cached, stored };
-        console.log(
-            `${time.toISOString()} STATUS/flights received=${received}, filtered=${filtered}, cached=${cached}, stored=(${flightHistoryStatsString(stored)}), mappings=${mappings.mapSize}${mappings.oldestEntry ? '/' + formatSecondsNicely(mappings.oldestEntry.age) : ''}`
-        );
+        if (flightStats) {
+            const { requests, successful, failed, successRate, mappingStats } = flightStats;
+            stats.flights = {
+                received,
+                filtered,
+                cached,
+                stored,
+                fetcher: {
+                    requests,
+                    successful,
+                    failed,
+                    successRate,
+                },
+                mappings: mappingStats
+                    ? {
+                          size: mappingStats.mapSize,
+                          uniqueFlights: mappingStats.uniqueFlights,
+                          hitRate: mappingStats.hitRate,
+                      }
+                    : undefined,
+            };
+            const fetcherInfo = `requests=${requests}, success=${successful}/${successRate}`;
+            const mappingInfo = mappingStats
+                ? `, mappings=${mappingStats.mapSize}/${mappingStats.uniqueFlights}/${mappingStats.hitRate}${mappingStats.oldest ? '/' + formatSecondsNicely(mappingStats.oldest.age) : ''}` // eslint-disable-line sonarjs/no-nested-conditional
+                : '';
+            console.log(`${time.toISOString()} STATUS/flights received=${received}, filtered=${filtered}, cached=${cached}, stored=(${flightHistoryStatsString(stored)}), fetched=(${fetcherInfo})${mappingInfo})`);
+        } else if (error) {
+            // Handle error case
+            stats.flights = { error };
+            console.log(`${time.toISOString()} STATUS/flights ERROR: ${error}`);
+        }
     }
+
     if (alerts) {
         const { alertsInserted, alertsRemoved, alertsActive, alertsStats } = alerts;
         stats.alerts = {
@@ -591,9 +629,7 @@ function stats(config, { flights, alerts, system }) {
             active: alertsActive.length,
             byType: Object.values(alertsActive).reduce((list, alert) => ({ ...list, [alert.type]: (list[alert.type] || 0) + 1 }), {}),
         };
-        console.error(
-            `${time.toISOString()} STATUS/alerts new=${alertsInserted.length}, all=${alertsActive.length}: ${alertsStats.map(([key, count]) => key + '=' + count).join(', ')}`
-        );
+        console.log(`${time.toISOString()} STATUS/alerts new=${alertsInserted.length}, all=${alertsActive.length}: ${alertsStats.map(([key, count]) => key + '=' + count).join(', ')}`);
     }
     if (system) {
         stats.system = system;
@@ -645,6 +681,7 @@ function init(config) {
 console.error('***');
 
 //
+// eslint-disable-next-line unicorn/prefer-array-find
 const args = process.argv.slice(2).filter((arg) => !arg.startsWith('--'));
 const { hostname } = require('os');
 const configFile = args[0] || `./config.${hostname}.js`;

@@ -5,10 +5,18 @@ const helpers = require('./filter-helpers.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function detectLifting(conf, extra, aircraft) {
+function detectLifting(conf, extra, aircraft, aircraftData) {
     if (conf.altitude && (aircraft.calculated?.altitude === undefined || aircraft.calculated?.altitude > conf.altitude)) return undefined;
     const { lat, lon } = extra.data.location;
-    const lifting = helpers.calculateLiftingTrajectory(lat, lon, aircraft);
+    // Pass aircraftData to get trajectory data for the helper
+    const trajectoryData = aircraftData
+        ? {
+              positions: aircraftData.getPositions(),
+              climbRates: aircraftData.getField('baro_rate').values,
+              altitudes: aircraftData.getField('calculated.altitude').values,
+          }
+        : undefined;
+    const lifting = helpers.calculateLiftingTrajectory(lat, lon, aircraft, trajectoryData);
     if (lifting?.isLifting) {
         lifting.nearbyAirports = extra.data.airports.findNearby(aircraft.lat, aircraft.lon, { distance: conf.radius });
         lifting.hasKnownOrigin = lifting.nearbyAirports.length > 0;
@@ -16,7 +24,6 @@ function detectLifting(conf, extra, aircraft) {
     }
     return lifting;
 }
-
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -28,9 +35,9 @@ module.exports = {
         this.conf = conf;
         this.extra = extra;
     },
-    preprocess: (aircraft) => {
+    preprocess: (aircraft, { aircraftData }) => {
         aircraft.calculated.lifting = { isLifting: false };
-        const lifting = detectLifting(this.conf, this.extra, aircraft);
+        const lifting = detectLifting(this.conf, this.extra, aircraft, aircraftData);
         if (lifting) aircraft.calculated.lifting = lifting;
     },
     evaluate: (aircraft) => aircraft.calculated.lifting.isLifting,
@@ -65,6 +72,7 @@ module.exports = {
     debug: (type, aircraft) => {
         const { lifting } = aircraft.calculated;
         if (type == 'sorting') return `score=${lifting.liftingScore.toFixed(2)}`;
+        return undefined;
     },
 };
 
