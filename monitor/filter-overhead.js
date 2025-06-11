@@ -57,7 +57,7 @@ function calculateOverheadDetails(lat, lon, alt, aircraft, trajectoryData = unde
         slantRange: Number(slantRange.toFixed(3)),
         verticalRate: aircraft.baro_rate || undefined,
         approachBearing: Number(approachBearing.toFixed(1)),
-        approachCardinal: tools.bearingToCardinal(approachBearing),
+        approachCardinal: tools.bearingToCardinal(approachBearing).cardinal,
         verticalAngle: Number(verticalAngle.toFixed(1)),
         crossTrackDistance: Number(crossTrackDistance.toFixed(3)),
         alongTrackDistance: Number(alongTrackDistance.toFixed(3)),

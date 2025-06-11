@@ -182,10 +182,6 @@ class AirportsData {
         return this.stats.valid;
     }
 
-    getStats() {
-        return { ...this.stats };
-    }
-
     getByICAO(icao) {
         return this.data[icao] || undefined;
     }
@@ -326,10 +322,6 @@ class AirportsData {
         };
     }
 
-    _log(...args) {
-        this.options.logger('airports:', ...args);
-    }
-
     isSpecialType(airport) {
         return ['heliport', 'balloonport', 'seaplane_base'].includes(airport.type);
     }
@@ -344,6 +336,25 @@ class AirportsData {
 
     getTypeCounts() {
         return { ...this.stats.types };
+    }
+
+    //
+
+    getInfo() {
+        const typesList = Object.entries(this.stats.types)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([type, count]) => `${type}:${count}`)
+            .join(', ');
+        return `${this.stats.valid} loaded (${this.spatialIndex ? 'spatial' : 'linear'}), types: ${typesList}`;
+    }
+
+    getStats() {
+        return { ...this.stats };
+    }
+
+    _log(...args) {
+        this.options.logger('airports:', ...args);
     }
 }
 
@@ -593,13 +604,27 @@ class AirportsDataSpatialIndexing extends AirportsData {
         this.cacheMisses = 0;
     }
 
-    getCacheStats() {
-        const total = this.cacheHits + this.cacheMisses;
+    //
+
+    getInfo() {
+        const baseInfo = super.getInfo();
+        const avgCellSize = this.stats.valid / this.spatialIndex.size;
+        const maxCellSize = Math.max(...[...this.spatialIndex.values()].map((cell) => cell.length));
+        const spatialInfo = `${this.spatialIndex.size} cells (avg=${avgCellSize.toFixed(1)}, max=${maxCellSize})`;
+
+        // Replace "spatial" with the detailed spatial info
+        return `${baseInfo}, spatial: ${spatialInfo}`;
+    }
+
+    getStats() {
         return {
-            size: this.cache.size,
-            hits: this.cacheHits,
-            misses: this.cacheMisses,
-            hitRate: total > 0 ? ((this.cacheHits / total) * 100).toFixed(1) + '%' : 'N/A',
+            ...this.stats,
+            cache: {
+                size: this.cache.size,
+                hits: this.cacheHits,
+                misses: this.cacheMisses,
+                hitRate: this.cacheHits + this.cacheMisses > 0 ? ((this.cacheHits / (this.cacheHits + this.cacheMisses)) * 100).toFixed(1) + '%' : 'N/A',
+            },
         };
     }
 }

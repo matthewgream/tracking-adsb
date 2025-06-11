@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const tools = { ...require('./tools-geometry.js'), ...require('./tools-statistics.js') };
+//const tools = { ...require('./tools-geometry.js'), ...require('./tools-statistics.js') };
 const aircraft_info = require('./aircraft-info.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -74,6 +74,156 @@ function formatCategoryCode(categoryCode) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+function getAlignmentQualityText(alignedRunway) {
+    if (alignedRunway.isGoodAlignment) return 'good';
+    if (alignedRunway.isModerateAlignment) return 'moderate';
+    if (alignedRunway.isPoorAlignment) return 'poor';
+    return 'undefined';
+}
+
+/**
+ * Build comprehensive format object for a single airport
+ * Returns both structured data and formatted text
+ * @param {Object} airport - Enhanced airport object with distance, phase, runway alignment, etc.
+ * @param {Object} options - Formatting options
+ * @returns {Object} { text: string, data: object }
+ */
+function buildAirportFormat(airport, options = {}) {
+    const { includeDistance = true, includeRunway = true, includePhase = true, includeConfidence = true } = options;
+
+    // Build structured data
+    const data = {
+        icao_code: airport.icao_code,
+        iata_code: airport.iata_code,
+        name: airport.name,
+        type: airport.type,
+        distance: airport.distance ? Number(airport.distance.toFixed(1)) : undefined,
+        distanceNm: airport.distanceNm ? Number(airport.distanceNm.toFixed(1)) : undefined,
+    };
+
+    // Add phase information if available
+    if (airport.phase) {
+        data.phase = airport.phase;
+        if (airport.phaseConfidence) {
+            data.phaseConfidence = Number(airport.phaseConfidence.toFixed(2));
+        }
+    }
+
+    // Add runway alignment information if available
+    if (airport.alignedRunway) {
+        data.alignedRunway = {
+            runway: airport.alignedRunway.runwayName,
+            alignmentScore: Number(airport.alignedRunway.alignmentScore.toFixed(2)),
+            confidenceScore: Number(airport.alignedRunway.confidenceScore.toFixed(2)),
+            quality: getAlignmentQualityText(airport.alignedRunway),
+        };
+    }
+
+    // Add relevance score if available
+    if (airport.relevanceScore !== undefined) {
+        data.relevanceScore = Number(airport.relevanceScore.toFixed(2));
+    }
+
+    // Build text description
+    let text = formatAirport(airport); // Use existing function for basic format
+
+    // Add phase to text
+    if (includePhase && airport.phase) {
+        text = `${airport.phase} ${text}`;
+    }
+
+    // Add runway information to text
+    if (includeRunway && airport.alignedRunway) {
+        if (airport.alignedRunway.isGoodAlignment) {
+            text += ` runway ${airport.alignedRunway.runwayName}`;
+            if (includeConfidence) {
+                text += ` (${Math.round(airport.alignedRunway.confidenceScore * 100)}% conf)`;
+            }
+        } else if (airport.alignedRunway.isModerateAlignment) {
+            text += ` possibly runway ${airport.alignedRunway.runwayName}`;
+        }
+    }
+
+    // Add distance to text
+    if (includeDistance && airport.distance) {
+        text += ` [${airport.distance.toFixed(1)}km]`;
+    }
+
+    return { text, data };
+}
+
+/**
+ * Build comprehensive format for multiple airports
+ * Handles primary airport with additional airports summary
+ * @param {Array} airports - Array of enhanced airport objects
+ * @param {Object} options - Formatting options
+ * @returns {Object} { text: string, airports: array, summary: object }
+ */
+function buildAirportsFormat(airports, options = {}) {
+    const {
+        maxAirports = 3,
+        primaryOnly = false,
+        sortBy = 'relevanceScore', // or 'distance'
+    } = options;
+
+    if (!airports || airports.length === 0) {
+        return {
+            text: 'no airports nearby',
+            airports: [],
+            summary: { total: 0, shown: 0 },
+        };
+    }
+
+    // Sort airports
+    const sorted = [...airports].sort((a, b) => (sortBy === 'distance' ? (a.distance || Infinity) - (b.distance || Infinity) : (b[sortBy] || 0) - (a[sortBy] || 0)));
+
+    // Get airports to format
+    const airportsToFormat = primaryOnly ? sorted.slice(0, 1) : sorted.slice(0, maxAirports);
+
+    // Format each airport
+    const formattedAirports = airportsToFormat.map((apt) => buildAirportFormat(apt, options));
+
+    // Build primary text
+    let text = '';
+    const [primary] = formattedAirports;
+
+    if (primary) {
+        ({ text } = primary);
+
+        // Add count of additional airports if relevant
+        if (!primaryOnly && airports.length > 1) {
+            const additionalCount = airports.length - 1;
+            const shownCount = Math.min(additionalCount, maxAirports - 1);
+
+            if (shownCount > 0) {
+                // List the additional airports briefly
+                const additionalTexts = formattedAirports.slice(1).map((apt) => `${apt.data.icao_code || apt.data.name}`);
+                text += ` (also: ${additionalTexts.join(', ')}`;
+
+                if (additionalCount > shownCount) {
+                    text += ` +${additionalCount - shownCount} more`;
+                }
+                text += ')';
+            } else if (additionalCount > 0) {
+                text += ` (+${additionalCount} other${additionalCount > 1 ? 's' : ''})`;
+            }
+        }
+    }
+
+    return {
+        text,
+        airports: formattedAirports.map((f) => f.data),
+        summary: {
+            total: airports.length,
+            shown: airportsToFormat.length,
+            primary: formattedAirports[0]?.data,
+        },
+    };
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 module.exports = {
     formatAltitude,
     formatAirport,
@@ -82,6 +232,9 @@ module.exports = {
     formatCategoryCode,
     formatStatsList,
     formatSecondsNicely,
+    // NEW
+    buildAirportFormat,
+    buildAirportsFormat,
 };
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------

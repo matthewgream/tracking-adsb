@@ -1413,12 +1413,66 @@ function calculatePointDensity(positions, radius) {
 /* eslint-enable no-unused-vars */
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function calculateVariance(values) {
+    if (values.length === 0) return 0;
+    const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
+    const squaredDiffs = values.map((val) => (val - mean) ** 2);
+    return squaredDiffs.reduce((sum, val) => sum + val, 0) / values.length;
+}
+
+/**
+ * Calculate the minimum angular difference between two angles in degrees
+ * Returns a value between -180 and 180, where:
+ * - Positive values mean angle2 is clockwise from angle1
+ * - Negative values mean angle2 is counter-clockwise from angle1
+ * @param {number} angle1 - First angle in degrees
+ * @param {number} angle2 - Second angle in degrees
+ * @returns {number} Angular difference in degrees (-180 to 180)
+ */
+function angleDifference(angle1, angle2) {
+    // Normalize both angles to 0-360 range
+    const a1 = normalizeDegrees(angle1);
+    const a2 = normalizeDegrees(angle2);
+
+    // Calculate raw difference
+    let diff = a2 - a1;
+
+    // Normalize to -180 to 180 range
+    // This finds the shortest angular distance
+    if (diff > 180) {
+        diff -= 360;
+    } else if (diff < -180) {
+        diff += 360;
+    }
+
+    return diff;
+}
+
+/**
+ * Calculate the absolute minimum angular difference between two angles in degrees
+ * Always returns a positive value between 0 and 180
+ * @param {number} angle1 - First angle in degrees
+ * @param {number} angle2 - Second angle in degrees
+ * @returns {number} Absolute angular difference in degrees (0 to 180)
+ */
+function absoluteAngleDifference(angle1, angle2) {
+    return Math.abs(angleDifference(angle1, angle2));
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Module Exports
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 module.exports = {
     // Constants
     constants,
+
+    // NEW
+    calculateVariance,
+    angleDifference,
+    absoluteAngleDifference,
 
     // Validation
     validateNumber,

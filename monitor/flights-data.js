@@ -26,7 +26,15 @@ class FlightDataFetcher {
 
         // Optional hex mapping integration
         if (options.mappings !== false) {
-            this.mappings = new FlightHexcodeMappings(options.mappings || {});
+            this.mappings = new FlightHexcodeMappings({
+                fetchOnline: true,
+                fetchMode: 'missing', // or 'all' to fetch all hex codes
+                fetchQueueInterval: 2000, // 2 seconds between fetch batches
+                fetchBatchSize: 10, // max 10 concurrent requests
+                expiryTime: 90 * 24 * 60 * 60 * 1000, // 90 days for local mappings
+                onlineExpiryTime: 180 * 24 * 60 * 60 * 1000, // 180 days for online data
+                ...options.mappings,
+            });
         }
 
         this.stats = {
@@ -37,6 +45,12 @@ class FlightDataFetcher {
             lastError: undefined,
             lastSuccess: undefined,
         };
+    }
+
+    destroy() {
+        if (this.mappings) {
+            this.mappings.destroy();
+        }
     }
 
     async fetch(url) {
@@ -145,9 +159,9 @@ class FlightDataFetcher {
 
         // Process with mappings if available
         if (this.mappings && data.aircraft) {
-            const { replaced, updated } = this.mappings.processAircraft(data.aircraft);
-            if (this.options.debug && (replaced > 0 || updated > 0)) {
-                this._log(`mappings: replaced=${replaced}, updated=${updated}`);
+            const { replaced, updated, queued } = this.mappings.processAircraft(data.aircraft);
+            if (this.options.debug && (replaced > 0 || updated > 0 || queued > 0)) {
+                this._log(`mappings: replaced=${replaced}, updated=${updated}, queued=${queued}`);
             }
         }
 
@@ -160,27 +174,27 @@ class FlightDataFetcher {
         return data;
     }
 
-    // Utility methods
+    getMappings() {
+        return this.mappings;
+    }
+
+    _delay(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    //
+
+    getInfo() {
+        const mappingInfo = this.mappings ? `, mappings=enabled` : ', mappings=disabled';
+        return `timeout=${this.options.timeout}ms, retries=${this.options.retries}${mappingInfo}`;
+    }
+
     getStats() {
         return {
             ...this.stats,
             successRate: this.stats.requests > 0 ? ((this.stats.successful / this.stats.requests) * 100).toFixed(1) + '%' : 'N/A',
             mappingStats: this.mappings ? this.mappings.getStats() : undefined,
         };
-    }
-
-    getMappings() {
-        return this.mappings;
-    }
-
-    destroy() {
-        if (this.mappings) {
-            this.mappings.destroy();
-        }
-    }
-
-    _delay(ms) {
-        return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
     _log(...args) {

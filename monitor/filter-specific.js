@@ -32,7 +32,7 @@ module.exports = {
             { field: 'flight', pattern: '^(CKS|CPT|RCH)', category: 'special-ops', description: 'Special operations' }, // not BOX/CMB/NPT
             { field: 'flight', pattern: '^(DUKE|ASCOT|REACH|ROCKY)', category: 'military-transport', description: 'Military transport' },
             // Test flights
-            { field: 'flight', pattern: '^(N|D|G|F|HB)-[A-Z]{3}', category: 'test', description: 'Possible test flight' },
+            { field: 'flight', pattern: '^(N|D|G|F)-[A-Z]{3}$', category: 'test', description: 'Possible test flight (short code)' },
             { field: 'flight', pattern: '^(TEST|XCL|XCH|XAS)', category: 'test', description: 'Test flight' },
             // Emergency services
             { field: 'flight', pattern: '^(HEMS|HELIMED|RESCUE)', category: 'emergency-services', description: 'Air ambulance' },

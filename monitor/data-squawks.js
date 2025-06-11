@@ -192,18 +192,6 @@ class SquawksData {
         return new Set(this.mapOfTypes.keys());
     }
 
-    getInfo() {
-        const possible = 8 ** 4; // 8^4 for octal codes
-        return `codes: possible=${possible}, unique=${this.stats.unique}, actual=${this.stats.total}, types: count=${this.stats.types}`;
-    }
-
-    getStats() {
-        return {
-            ...this.stats,
-            possible: 8 ** 4,
-        };
-    }
-
     hasCode(code) {
         const validation = this._normalizeSquawkCode(code);
         return validation.valid && this.mapOfSquawks.has(validation.code);
@@ -211,6 +199,28 @@ class SquawksData {
 
     hasType(type) {
         return type && this.mapOfTypes.has(type);
+    }
+
+    //
+
+    getInfo() {
+        const coverage = ((this.stats.unique / 4096) * 100).toFixed(1);
+        const typesTop =
+            this.mapOfTypes.size > 0
+                ? [...this.mapOfTypes.entries()]
+                      .sort((a, b) => b[1].length - a[1].length)
+                      .slice(0, 3)
+                      .map(([type, entries]) => `${type}:${entries.length}`)
+                      .join(', ')
+                : 'none';
+        return `${this.stats.unique}/${4096} codes (${coverage}% coverage), ${this.stats.types} types (top: ${typesTop})`;
+    }
+
+    getStats() {
+        return {
+            ...this.stats,
+            possible: 8 ** 4,
+        };
     }
 
     _log(...args) {

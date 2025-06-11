@@ -130,14 +130,6 @@ class MqttClient {
         });
     }
 
-    getStats() {
-        return {
-            ...this.stats,
-            connected: this.connected,
-            uptime: this.connectedAt ? Date.now() - this.connectedAt : 0,
-        };
-    }
-
     isConnected() {
         return this.connected;
     }
@@ -190,6 +182,16 @@ class MqttClient {
             this.stats.errors++;
             this._log(`receiver error on '${topic}':`, e.message);
         }
+    }
+
+    //
+
+    getStats() {
+        return {
+            ...this.stats,
+            connected: this.connected,
+            uptime: this.connectedAt ? Date.now() - this.connectedAt : 0,
+        };
     }
 
     _log(...args) {

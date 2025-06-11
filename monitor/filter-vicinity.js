@@ -33,8 +33,8 @@ module.exports = {
     sort: (_a, _b) => 0,
     format: (aircraft) => {
         const { positionRelative } = aircraft.calculated;
-        const direction = positionRelative ? `${positionRelative.cardinalBearing} direction` : 'nearby';
-        const trackInfo = aircraft.track ? ` tracking ${tools.bearingToCardinal(aircraft.track)}` : '';
+        const direction = positionRelative ? `${positionRelative.cardinal} direction` : 'nearby';
+        const trackInfo = aircraft.track ? ` tracking ${tools.bearingToCardinal(aircraft.track).cardinal}` : '';
         return {
             text: `nearby, look ${direction}${trackInfo}`,
             warn: true,

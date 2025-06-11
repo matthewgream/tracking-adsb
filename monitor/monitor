@@ -17,91 +17,60 @@ async function do_yield() {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
-// output mechanisms for publishing and displaying alerts: noting they arrive as inserts or removes
+// modules
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-let mqtt;
-
-function publish(config, type, sub, data) {
-    if (mqtt && config.mqtt.publishTopics?.[type]) {
-        data.forEach((item) => mqtt.publish([config.mqtt.publishTopics[type], sub].join('/'), item));
-    }
-}
-
-function publishInit(config) {
-    if (!mqtt && config.mqtt && config.mqtt.enabled) {
-        const { MqttClient } = require('./function-mqtt.js');
-        mqtt = new MqttClient(config.mqtt);
-        mqtt.begin((topic, message) => console.error(`mqtt: received: '${topic}' => '${message}' [IGNORED]`));
-
-        // Handle graceful shutdown
-        process.on('exit', async () => {
-            if (mqtt) await mqtt.end();
-        });
-    }
-    return {};
-}
-
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-function display(config, type, sub, data) {
-    if (sub == 'insert') data.forEach((item) => console.log(`${item.timeFormatted} ${type.toUpperCase()}/${sub} [${item.type}] ${item.flight} ${item.text}${item.warn ? ' [NOTICE]' : ''}`));
-    //else if (sub == 'remove') data.forEach((item) => console.log(`${item} ${type.toUpperCase()}/${sub}`));
-}
-
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-function deliver(config, alerts) {
-    if (alerts.alertsInserted.length > 0) {
-        publish(config, 'alert', 'insert', alerts.alertsInserted);
-        display(config, 'alert', 'insert', alerts.alertsInserted);
-    }
-    if (alerts.alertsRemoved.length > 0) {
-        publish(config, 'alert', 'remove', alerts.alertsRemoved);
-        display(config, 'alert', 'remove', alerts.alertsRemoved);
-    }
-}
 
 function deliverInit(config) {
-    return publishInit(config);
+    const { DeliveryMechanics } = require('./deliver-mechanics.js');
+    const deliver = new DeliveryMechanics(config);
+    console.error(`deliver: ${deliver.getInfo()}`);
+    return deliver;
 }
-
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
-// formatting functions for rendering and display
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-function formatInit() {
-    return require('./tools-formats.js'); // TO FIX
-}
-
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
-// initialise flights, airports and further data modules and providers
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 function flightsInit(config) {
     const { FlightDataFetcher } = require('./flights-data.js');
-    return new FlightDataFetcher({
+    const fetcher = new FlightDataFetcher({
         retries: 5,
         mappings: {
+            debug: true,
             filename: './.cache-hexcodes.json',
-            expiryTime: 30 * 24 * 60 * 60 * 1000, // 30 days
+            expiryTime: 90 * 24 * 60 * 60 * 1000, // 90 days for local
+            onlineExpiryTime: 180 * 24 * 60 * 60 * 1000, // 180 days for online
+            fetchOnline: true,
+            fetchMode: 'missing', // 'missing', 'all', or 'none'
+            fetchQueueInterval: 2000,
+            fetchBatchSize: 10,
+            ...config.mappings, // Allow override from config
         },
         ...config,
     });
+    console.error(`flights: ${fetcher.getInfo()}`);
+    if (fetcher.mappings) console.error(`mappings: ${fetcher.mappings.getInfo()}`);
+    return fetcher;
 }
 
 function airportsInit(config, { location, range, vicinity }) {
     const airports = require('./airports-data.js')(config);
-    const airportText = [`${airports.length()} loaded`];
-    if (range) {
-        const ar = airports.findNearby(location.lat, location.lon, { distance: tools.nmToKm(range).value });
-        airportText.push(`${ar.length} in range (${range}nm/${tools.nmToKm(range).value.toFixed(0)}km)`);
+    console.error(`airports: ${airports.getInfo()}`);
+    if (range || vicinity) {
+        const info = [];
+        if (range) {
+            const ar = airports.findNearby(location.lat, location.lon, { distance: tools.nmToKm(range).value });
+            info.push(`${ar.length} in range (${range}nm/${tools.nmToKm(range).value.toFixed(0)}km)`);
+        }
+        if (vicinity) {
+            const av = airports.findNearby(location.lat, location.lon, { distance: vicinity });
+            const vicinityList =
+                av.length > 0
+                    ? `: ${av
+                          .slice(0, 5)
+                          .map((a) => tools.formatAirport(a))
+                          .join(', ')}${av.length > 5 ? ` +${av.length - 5} more` : ''}`
+                    : '';
+            info.push(`${av.length} in vicinity (${vicinity}km)${vicinityList}`);
+        }
+        if (info.length > 0) console.error(`airports-range: ${info.join('; ')}`);
     }
-    if (vicinity) {
-        const av = airports.findNearby(location.lat, location.lon, { distance: vicinity });
-        airportText.push(`${av.length} in vicinity (${vicinity}km): ${av.map((a) => tools.formatAirport(a)).join(', ')}`);
-    }
-    console.error(`airports: ${airportText.join('; ')}`);
     return airports;
 }
 
@@ -111,7 +80,7 @@ function furtherInit(config, _data) {
             let data;
             try {
                 data = new (require(`./data-${name}.js`))({ ...options, directory: '../content' });
-                console.error(`data [${name}]: ${data.getInfo()}`);
+                console.error(`data-${name}: ${data.getInfo()}`);
             } catch (e) {
                 console.error(`data [${name}]: could not be loaded:`, e);
             }
@@ -121,33 +90,10 @@ function furtherInit(config, _data) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
-// preprocess flights by calculating or fixing up data
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const { AircraftData } = require('./aircraft-data.js');
 
-function preprocessAircraft(extra, aircraftList) {
-    const { lat, lon } = extra.location;
-    for (const aircraft of aircraftList) {
-        aircraft.calculated = {};
-        if (!aircraft.lat && !aircraft.lon && aircraft.lastPosition?.lat && aircraft.lastPosition?.lon) {
-            aircraft.lat = aircraft.lastPosition.lat;
-            aircraft.lon = aircraft.lastPosition.lon;
-            aircraft.calculated.position = true;
-        }
-        if (aircraft.lat && aircraft.lon) {
-            aircraft.calculated.distance = tools.calculateDistance(lat, lon, aircraft.lat, aircraft.lon).distance;
-            if (aircraft.track) aircraft.calculated.positionRelative = tools.calculateRelativePosition(lat, lon, aircraft.lat, aircraft.lon, aircraft.track);
-        }
-        aircraft.calculated.altitude = aircraft.alt_baro ?? aircraft.alt_geom;
-        if (aircraft.calculated.altitude === 'ground') aircraft.calculated.altitude = 0;
-        if (aircraft.calculated.altitude === null || typeof aircraft.calculated.altitude !== 'number') delete aircraft.calculated.altitude;
-    }
-    return aircraftList;
-}
-
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
-// build filters and apply them to flights, returning the results in a prioritised list
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const filterModules = [
@@ -169,7 +115,7 @@ const filterModules = [
     require('./filter-overhead.js'),
 ];
 
-function filterInit(config, extra) {
+function filtersInit(config, extra) {
     const filterSet = filterModules.filter((filter) => config[filter.id]?.enabled == undefined || config[filter.id]?.enabled);
     const filterMap = Object.fromEntries(filterSet.map((module) => [module.id, module]));
     filterSet.forEach((filter) => filter.config(config[filter.id], extra));
@@ -182,7 +128,9 @@ function filterInit(config, extra) {
     return { filterSet, filterMap };
 }
 
-async function filterAircraft(filters, aircraftList) {
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+async function flightsProcess(filters, aircraftList) {
     const { filterSet } = filters;
 
     let count = 0,
@@ -195,7 +143,7 @@ async function filterAircraft(filters, aircraftList) {
         if (aircraft.calculated._matchedFilters.length > 0) filtered.push(aircraft);
         if (++count % cycle === 0) await do_yield();
     }
-    for (const filter of filterSet) if (filter.postprocess) filter.postprocess();
+    for (const filter of filterSet) if (filter.postprocess) filter.postprocess({ aircraftList });
 
     const sorted = filtered.sort((a, b) => {
         const aFilters = a.calculated._matchedFilters,
@@ -251,24 +199,24 @@ async function filterAircraft(filters, aircraftList) {
     return sorted;
 }
 
-function _filterStats(filter, aircrafts) {
+function _flightsProcessStats(filter, aircrafts) {
     const list = aircrafts.filter((a) => filter.evaluate(a));
     return {
         ...tools.formatStatsList(filter.id, list),
         ...filter.getStats?.(aircrafts, list),
     };
 }
-function filterStats(filters, aircrafts) {
+function flightsProcessStats(filters, aircrafts) {
     const { filterSet } = filters;
-    return Object.fromEntries(filterSet.map((filter) => [filter.id, _filterStats(filter, aircrafts)]));
+    return Object.fromEntries(filterSet.map((filter) => [filter.id, _flightsProcessStats(filter, aircrafts)]));
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
-// fetch flights, fix their data up by preprocessing them, and then filter them for those of interest
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 let preprocess_exclude;
-function fixup(config, data) {
+async function flightsFetch(config, flights) {
+    const data = await flights.fetch(config.link);
     if (config?.exclude) {
         if (!preprocess_exclude && config.exclude) preprocess_exclude = new Set(config.exclude);
         if (preprocess_exclude && data.aircraft) data.aircraft = data.aircraft.filter((aircraft) => !aircraft.flight || !preprocess_exclude.has(aircraft.flight));
@@ -276,17 +224,40 @@ function fixup(config, data) {
     return data;
 }
 
-async function obtain(config, flights, filters, extra) {
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function flightsPreprocess(extra, aircraftList) {
+    const { lat, lon } = extra.location;
+    for (const aircraft of aircraftList) {
+        aircraft.calculated = {};
+        if (!aircraft.lat && !aircraft.lon && aircraft.lastPosition?.lat && aircraft.lastPosition?.lon) {
+            aircraft.lat = aircraft.lastPosition.lat;
+            aircraft.lon = aircraft.lastPosition.lon;
+            aircraft.calculated.position = true;
+        }
+        if (aircraft.lat && aircraft.lon) {
+            aircraft.calculated.distance = tools.calculateDistance(lat, lon, aircraft.lat, aircraft.lon).distance;
+            if (aircraft.track) aircraft.calculated.positionRelative = tools.calculateRelativePosition(lat, lon, aircraft.lat, aircraft.lon, aircraft.track);
+        }
+        aircraft.calculated.altitude = aircraft.alt_baro ?? aircraft.alt_geom;
+        if (aircraft.calculated.altitude === 'ground') aircraft.calculated.altitude = 0;
+        if (aircraft.calculated.altitude === null || typeof aircraft.calculated.altitude !== 'number') delete aircraft.calculated.altitude;
+    }
+    return aircraftList;
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+async function flightsObtain(config, flights, filters, extra) {
     try {
-        let data = await flights.fetch(config.link);
-        data = fixup(config, data);
+        const data = await flightsFetch(config, flights);
         const receivedAircraft = data.aircraft;
-        let aircraft = preprocessAircraft(extra, receivedAircraft);
-        const filteredAircraft = await filterAircraft(filters, aircraft);
+        const aircraft = flightsPreprocess(extra, receivedAircraft);
+        const filteredAircraft = await flightsProcess(filters, aircraft);
         const stat = {
             receivedAircraftCount: receivedAircraft.length,
             filteredAircraftCount: filteredAircraft.length,
-            filterStats: filterStats(filters, filteredAircraft),
+            filterStats: flightsProcessStats(filters, filteredAircraft),
             flights: flights.getStats(),
         };
         const now = Date.now();
@@ -302,8 +273,6 @@ async function obtain(config, flights, filters, extra) {
     }
 }
 
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
-// track flights: cache them and keep their history (for some time); preserve the calcualted at the head of the history
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const flightCache = {};
@@ -353,7 +322,7 @@ function flightHistoryStatsString({ tracked, entries, avg, oldest, newest }) {
     return `tracked=${tracked}, entries=${entries}${avg === undefined ? '' : ', avg=' + avg}${oldest === undefined || newest === undefined ? '' : ', age=' + tools.formatSecondsNicely(oldest) + '/' + tools.formatSecondsNicely(newest)}`;
 }
 
-function track(data) {
+function flightsTrack(data) {
     if (data.aircraft?.length > 0) {
         const now = Date.now();
         const currentHexes = new Set();
@@ -400,6 +369,55 @@ function track(data) {
         data = { ...data, aircraft: Object.values(flightCache) };
     }
     return data;
+}
+
+function flightsStatus(flights) {
+    const { receivedAircraftCount: received, filteredAircraftCount: filtered, flights: flightStats, error } = flights;
+    const cached = Object.keys(flightCache).length;
+    const stored = flightHistoryStats();
+    let status, text;
+    if (flightStats) {
+        const { requests, successful, failed, successRate, mappingStats } = flightStats;
+        status = {
+            received,
+            filtered,
+            cached,
+            stored,
+            fetcher: {
+                requests,
+                successful,
+                failed,
+                successRate,
+            },
+            mappings: mappingStats
+                ? {
+                      size: mappingStats.mapSize,
+                      uniqueFlights: mappingStats.uniqueFlights,
+                      hitRate: mappingStats.hitRate,
+                      withData: mappingStats.withData,
+                      bySource: mappingStats.bySource,
+                      fetch: {
+                          queued: mappingStats.fetch.queued,
+                          total: mappingStats.fetch.total,
+                          success: mappingStats.fetch.fetched,
+                          failed: mappingStats.fetch.failed,
+                          rate: mappingStats.fetch.successRate,
+                      },
+                  }
+                : undefined,
+        };
+        const fetcherInfo = `requests=${requests}, success=${successful}/${successRate}`;
+        const mappingInfo = mappingStats
+            ? `, mappings=${mappingStats.mapSize}/${mappingStats.uniqueFlights}/${mappingStats.hitRate}${mappingStats.oldest ? '/' + tools.formatSecondsNicely(mappingStats.oldest.age) : ''}` +
+              `${mappingStats.bySource ? ' (L:' + mappingStats.bySource.local + '/O:' + mappingStats.bySource.online + ')' : ''}` +
+              `${mappingStats.fetch ? ', fetch=' + mappingStats.fetch.total + '/' + (mappingStats.fetch.successRate || '0%') + '/' + mappingStats.fetch.queued : ''}`
+            : '';
+        text = `received=${received}, filtered=${filtered}, cached=${cached}, stored=(${flightHistoryStatsString(stored)}), fetched=(${fetcherInfo})${mappingInfo})`;
+    } else if (error) {
+        status = { error };
+        text = `ERROR: ${error}`;
+    }
+    return { status, text };
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -459,7 +477,7 @@ function alertMeta(format, aircraft) {
         aircraft.calculated.emergency.hasEmergency || aircraft.calculated.military.isMilitary || (aircraft.calculated.vicinity.isProximate && (aircraft.calculated.landing.isLanding || aircraft.calculated.lifting.isLifting));
 
     const { positionRelative: position, distance, altitude } = aircraft.calculated;
-    const positionInfo = position ? ` (${distance.toFixed(1)}km ${position.cardinalBearing} ${tools.formatAltitude(altitude)})` : '';
+    const positionInfo = position ? ` (${distance.toFixed(1)}km ${position.cardinal} ${tools.formatAltitude(altitude)})` : '';
     const aircraftInfo = aircraftType ? ` <${tools.formatCategoryCode(aircraftType)}>` : '';
 
     const meta = {
@@ -477,82 +495,58 @@ function alertMeta(format, aircraft) {
     return details;
 }
 
+function alertsStatus(alerts) {
+    const { alertsInserted, alertsRemoved, alertsActive, alertsStats } = alerts;
+    const status = {
+        inserted: alertsInserted.length,
+        removed: alertsRemoved.length,
+        active: alertsActive.length,
+        byType: Object.values(alertsActive).reduce((list, alert) => ({ ...list, [alert.type]: (list[alert.type] || 0) + 1 }), {}),
+    };
+    const text = `new=${alertsInserted.length}, all=${alertsActive.length}: ${alertsStats.map(([key, count]) => key + '=' + count).join(', ')}`;
+    return { status, text };
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// build status
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function statusBuilder(_config, sources) {
+    const time = new Date(),
+        timeFormatted = time.toISOString();
+
+    const status = {};
+    if (sources.flights) status.flights = flightsStatus(sources.flights);
+    if (sources.alerts) status.alerts = alertsStatus(sources.alerts);
+    if (sources.system) status.system = systemStatus(sources.system);
+
+    return { time: time.getTime(), timeFormatted, status };
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // initialise the system, then run the loop and generate stats
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function stats(config, { flights, alerts, system }) {
-    const time = new Date();
-
-    const stats = { time: time.getTime(), timeFormatted: time.toISOString() };
-
-    if (flights) {
-        const { receivedAircraftCount: received, filteredAircraftCount: filtered, flights: flightStats, error } = flights;
-        const cached = Object.keys(flightCache).length;
-        const stored = flightHistoryStats();
-        if (flightStats) {
-            const { requests, successful, failed, successRate, mappingStats } = flightStats;
-            stats.flights = {
-                received,
-                filtered,
-                cached,
-                stored,
-                fetcher: {
-                    requests,
-                    successful,
-                    failed,
-                    successRate,
-                },
-                mappings: mappingStats
-                    ? {
-                          size: mappingStats.mapSize,
-                          uniqueFlights: mappingStats.uniqueFlights,
-                          hitRate: mappingStats.hitRate,
-                      }
-                    : undefined,
-            };
-            const fetcherInfo = `requests=${requests}, success=${successful}/${successRate}`;
-            const mappingInfo = mappingStats
-                ? `, mappings=${mappingStats.mapSize}/${mappingStats.uniqueFlights}/${mappingStats.hitRate}${mappingStats.oldest ? '/' + tools.formatSecondsNicely(mappingStats.oldest.age) : ''}` // eslint-disable-line sonarjs/no-nested-conditional
-                : '';
-            console.log(`${time.toISOString()} STATUS/flights received=${received}, filtered=${filtered}, cached=${cached}, stored=(${flightHistoryStatsString(stored)}), fetched=(${fetcherInfo})${mappingInfo})`);
-        } else if (error) {
-            // Handle error case
-            stats.flights = { error };
-            console.log(`${time.toISOString()} STATUS/flights ERROR: ${error}`);
-        }
-    }
-
-    if (alerts) {
-        const { alertsInserted, alertsRemoved, alertsActive, alertsStats } = alerts;
-        stats.alerts = {
-            inserted: alertsInserted.length,
-            removed: alertsRemoved.length,
-            active: alertsActive.length,
-            byType: Object.values(alertsActive).reduce((list, alert) => ({ ...list, [alert.type]: (list[alert.type] || 0) + 1 }), {}),
-        };
-        console.log(`${time.toISOString()} STATUS/alerts new=${alertsInserted.length}, all=${alertsActive.length}: ${alertsStats.map(([key, count]) => key + '=' + count).join(', ')}`);
-    }
-    if (system) {
-        stats.system = system;
-        const { okay, error, empty } = system.counts;
-        console.log(`${time.toISOString()} STATUS/system okay=${okay}, error=${error}, empty=${empty}, started=${system.started}`);
-    }
-    if (Object.keys(stats).length > 0) publish(config.deliver, 'state', 'loop', [stats]);
+function systemStatus(system) {
+    const { okay, error, empty } = system.counts;
+    const text = `okay=${okay}, error=${error}, empty=${empty}, started=${system.started}`;
+    const status = system;
+    return { status, text };
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-async function loop(config, system) {
+async function systemLoop(config, system) {
     try {
-        const { data, stat, filteredAircraft } = await obtain(config.flights, system.flights, system.filters, { location: config.location });
+        const { data, stat, filteredAircraft } = await flightsObtain(config.flights, system.flights, system.filters, { location: config.location });
         if (data) {
-            const processedData = track(data);
+            const processedData = flightsTrack(data);
             const filteredData = { ...processedData, aircraft: filteredAircraft };
             const alerts = alertsBuilder(config.alerts, system.filters, filteredData, stat.filterStats);
-            deliver(config.deliver, alerts);
+            if (alerts) system.deliver.deliverAlerts(alerts);
             system.stats.counts.okay++;
-            stats(config, { alerts, flights: stat, system: system.stats });
+            const status = statusBuilder(config, { alerts, flights: stat, system: system.stats });
+            if (status) system.deliver.deliverStatus(status);
         } else {
             system.stats.counts.empty++;
             console.error(`loop: no data received:`, stat?.error || 'no error details');
@@ -565,24 +559,21 @@ async function loop(config, system) {
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function init(config) {
+function systemInit(config) {
     const data = { location: config.location, range: config.range_max, vicinity: config.filters.vicinity.distance };
     const flights = flightsInit(config.flights);
     const airports = airportsInit(config.airports, data);
     const further = furtherInit(config.further, data);
-    const format = formatInit();
-    const filters = filterInit(config.filters, { data: { ...data, ...further, airports }, format });
+    const format = require('./tools-formats.js'); // TO REMOVE
+    const filters = filtersInit(config.filters, { data: { ...data, ...further, airports }, format });
     const deliver = deliverInit(config.deliver);
     return { flights, airports, further, format, filters, deliver };
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
-// main
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 console.error('***');
-
-//
 // eslint-disable-next-line unicorn/prefer-array-find
 const args = process.argv.slice(2).filter((arg) => !arg.startsWith('--'));
 const { hostname } = require('os');
@@ -595,15 +586,22 @@ if (debugSort) {
     config.debug.sorting = true;
 }
 console.error('config:', config);
-//
-
-const system = init(config);
+const system = systemInit(config);
 system.stats = {
     started: new Date().toISOString(),
     counts: { okay: 0, error: 0, empty: 0 },
 };
-loop(config, system);
-setInterval(() => loop(config, system), CYCLE_SCAN_TIME * 1000);
+const loopInterval = setInterval(() => systemLoop(config, system), CYCLE_SCAN_TIME * 1000);
+const shutdown = async () => {
+    console.error('\nSHUTDOWN');
+    clearInterval(loopInterval);
+    system?.flights?.getMappings()?.destroy();
+    await system?.deliver?.destroy();
+    process.exit(0);
+};
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+systemLoop(config, system);
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------

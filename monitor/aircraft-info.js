@@ -398,6 +398,68 @@ function isSurfaceVehicle(category) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function getApproachSpeedIndicator(aircraft) {
+    const categorySpeedRanges = {
+        A1: { min: 60, normal: 80, max: 100 },
+        A2: { min: 100, normal: 130, max: 160 },
+        A3: { min: 120, normal: 140, max: 180 },
+        A4: { min: 120, normal: 135, max: 170 },
+        A5: { min: 130, normal: 150, max: 190 },
+        A7: { min: 0, normal: 60, max: 100 },
+    };
+
+    const speeds = categorySpeedRanges[aircraft.category] || categorySpeedRanges.A3;
+
+    if (aircraft.gs < speeds.min) return 'slow';
+    if (aircraft.gs > speeds.max) return 'fast';
+    return 'normal';
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Get required wake turbulence separation
+ * @private
+ */
+function getRequiredWakeSeparation(leadingCategory, followingCategory) {
+    // ICAO wake turbulence categories
+    // A5 (Heavy), A4 (B757), A3 (Large), A2 (Small), A1 (Light)
+
+    const separationMatrix = {
+        A5: {
+            // Heavy leading
+            A5: { distance: 4, reason: 'Heavy behind Heavy' },
+            A4: { distance: 5, reason: 'B757 behind Heavy' },
+            A3: { distance: 5, reason: 'Large behind Heavy' },
+            A2: { distance: 6, reason: 'Small behind Heavy' },
+            A1: { distance: 6, reason: 'Light behind Heavy' },
+        },
+        A4: {
+            // B757 leading (special case)
+            A5: { distance: 4, reason: 'Heavy behind B757' },
+            A4: { distance: 4, reason: 'B757 behind B757' },
+            A3: { distance: 5, reason: 'Large behind B757' },
+            A2: { distance: 5, reason: 'Small behind B757' },
+            A1: { distance: 5, reason: 'Light behind B757' },
+        },
+        A3: {
+            // Large leading
+            A5: { distance: 3, reason: 'Heavy behind Large' },
+            A4: { distance: 3, reason: 'B757 behind Large' },
+            A3: { distance: 3, reason: 'Large behind Large' },
+            A2: { distance: 4, reason: 'Small behind Large' },
+            A1: { distance: 4, reason: 'Light behind Large' },
+        },
+    };
+
+    // Default separation
+    const defaultSep = { distance: 3, reason: 'Standard separation' };
+
+    return separationMatrix[leadingCategory]?.[followingCategory] || defaultSep;
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 module.exports = {
@@ -411,6 +473,9 @@ module.exports = {
     //
     estimateDepartureTime,
     estimateCruiseAltitude,
+    //
+    getApproachSpeedIndicator,
+    getRequiredWakeSeparation,
 };
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
