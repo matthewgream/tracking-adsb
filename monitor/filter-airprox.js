@@ -1,8 +1,84 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const helpers = require('./filter-helpers.js');
-const tools = require('./tools-geometry.js');
+// const helpers = require('./filter-helpers.js');
+const tools = { ...require('./tools-geometry.js'), ...require('./tools-statistics.js') };
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+function calculateClosureDetails(aircraft, other) {
+    // ===== 1. Input validation and screening =====
+
+    const required = {
+        aircraft_lat: aircraft?.lat,
+        aircraft_lon: aircraft?.lon,
+        aircraft_track: aircraft?.track,
+        aircraft_gs: aircraft?.gs,
+        other_lat: other?.lat,
+        other_lon: other?.lon,
+        other_track: other?.track,
+        other_gs: other?.gs,
+    };
+    for (const [key, value] of Object.entries(required)) if (value === undefined || value === null) return { error: `Missing required field: ${key}`, closureRate: undefined, closureTime: undefined };
+    const aircraftCheck = tools.validateCoordinates(aircraft.lat, aircraft.lon).valid;
+    if (!aircraftCheck.valid) return { error: `Aircraft 1 ${aircraftCheck.error}`, closureRate: undefined, closureTime: undefined };
+    const otherCheck = tools.validateCoordinates(other.lat, other.lon).valid;
+    if (!otherCheck.valid) return { error: `Aircraft 2 ${otherCheck.error}`, closureRate: undefined, closureTime: undefined };
+    const validations = [
+        tools.validateNumber(aircraft.track, 0, 360, 'aircraft 1 track').valid,
+        tools.validateNumber(aircraft.gs, 0, 2000, 'aircraft 1 ground speed').valid,
+        tools.validateNumber(other.track, 0, 360, 'aircraft 2 track').valid,
+        tools.validateNumber(other.gs, 0, 2000, 'aircraft 2 ground speed').valid,
+    ];
+    for (const check of validations) if (!check.valid) return { error: check.error, closureRate: undefined, closureTime: undefined };
+
+    // ===== 2. Core calculations =====
+
+    const velocityComponents1 = tools.calculateVelocityComponents(aircraft.track, aircraft.gs);
+    const velocityComponents2 = tools.calculateVelocityComponents(other.track, other.gs);
+    const relativeVelocity = { x: velocityComponents2.x - velocityComponents1.x, y: velocityComponents2.y - velocityComponents1.y };
+    const closureRate = Math.hypot(relativeVelocity.x, relativeVelocity.y);
+    const currentDistance = tools.calculateDistance(aircraft.lat, aircraft.lon, other.lat, other.lon).distance;
+    const { bearing } = tools.calculateBearing(aircraft.lat, aircraft.lon, other.lat, other.lon);
+    const closureAnalysis = tools.calculateClosureGeometry(aircraft, other, relativeVelocity, bearing, currentDistance);
+    let closureTime, closestApproach;
+    if (closureAnalysis.valid && Math.abs(closureAnalysis.closureVelocity) > 0.1) {
+        const timeToClosest = closureAnalysis.timeToClosestApproach;
+        if (timeToClosest > 0 && timeToClosest < 600) {
+            closureTime = timeToClosest;
+            const closestPoint1 = tools.calculateProjectedPosition(aircraft.lat, aircraft.lon, tools.knotsToKmPerMin(aircraft.gs).value * (timeToClosest / 60), aircraft.track),
+                closestPoint2 = tools.calculateProjectedPosition(other.lat, other.lon, tools.knotsToKmPerMin(other.gs).value * (timeToClosest / 60), other.track);
+            closestApproach = {
+                distance: tools.calculateDistance(closestPoint1.lat, closestPoint1.lon, closestPoint2.lat, closestPoint2.lon).distance,
+                timeSeconds: timeToClosest,
+                position1: closestPoint1,
+                position2: closestPoint2,
+            };
+        } else if (timeToClosest < 0) closureTime = timeToClosest;
+    }
+
+    // ===== 3. Prepare return data =====
+
+    return {
+        closureRate: Number(closureRate.toFixed(1)),
+        closureTime: closureTime ? Number(closureTime.toFixed(0)) : undefined,
+        currentDistance: Number(currentDistance.toFixed(3)),
+        bearing: Number(bearing.toFixed(1)),
+        relativeVelocity: {
+            x: Number(relativeVelocity.x.toFixed(1)),
+            y: Number(relativeVelocity.y.toFixed(1)),
+        },
+        closureVelocity: closureAnalysis.valid ? Number(closureAnalysis.closureVelocity.toFixed(1)) : undefined,
+        isConverging: closureAnalysis.valid ? closureAnalysis.closureVelocity < 0 : undefined,
+        closestApproach,
+        geometry: {
+            bearingDiff: Number(closureAnalysis.bearingDiff.toFixed(1)),
+            aspectAngle: Number(closureAnalysis.aspectAngle.toFixed(1)),
+            crossingAngle: Number(closureAnalysis.crossingAngle.toFixed(1)),
+        },
+    };
+}
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -53,7 +129,7 @@ function detectAirprox(conf, aircraft, aircraftList) {
     const [otherAircraft] = proximateAircraft.sort((a, b) => tools.calculateDistance(aircraft.lat, aircraft.lon, a.lat, a.lon).distance - tools.calculateDistance(aircraft.lat, aircraft.lon, b.lat, b.lon).distance);
     const horizontalDistance = tools.calculateDistance(aircraft.lat, aircraft.lon, otherAircraft.lat, otherAircraft.lon).distance;
     const verticalSeparation = Math.abs(aircraft.calculated.altitude - otherAircraft.calculated.altitude);
-    const { closureRate, closureTime } = helpers.calculateClosureDetails(aircraft, otherAircraft);
+    const { closureRate, closureTime } = calculateClosureDetails(aircraft, otherAircraft);
 
     return {
         hasAirprox: true,
