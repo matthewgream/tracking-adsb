@@ -3,7 +3,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const tools = require('./tools-geometry.js');
+const tools = { ...require('./tools-geometry.js'), ...require('./tools-formats.js') };
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -70,106 +70,8 @@ function deliverInit(config) {
 // formatting functions for rendering and display
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function formatSecondsNicely(s) {
-    if (s < 60) return s + 's';
-    if (s < 3600) return Math.floor(s / 60) + 'm' + (s % 60 ? (s % 60) + 's' : '');
-    if (s < 86400) return Math.floor(s / 3600) + 'h' + (Math.floor((s % 3600) / 60) + 'm') + (s % 60 ? (s % 60) + 's' : '');
-    return Math.floor(s / 86400) + 'd' + (Math.floor((s % 86400) / 3600) + 'h') + (Math.floor((s % 3600) / 60) + 'm') + (s % 60 ? (s % 60) + 's' : '');
-}
-
-function formatAltitude(altitude) {
-    // Standard transition level in the UK is generally FL70 (7,000 ft)
-    // London TMA uses varying transition altitudes, but 6,000 ft is common
-    const transitionLevel = 7000;
-    if (altitude === undefined) return 'n/a';
-    if (altitude >= transitionLevel) return `FL${Math.round(altitude / 100)}`;
-    if (altitude === 0) return 'ground';
-    return `${altitude.toLocaleString()} ft`;
-}
-
-function formatStatsList(name, list) {
-    return {
-        count: list.length,
-        description: `${name}: ${list.length}` + (list.length > 0 ? ': ' + list.map((aircraft) => aircraft.flight).join(', ') : ''),
-    };
-}
-
-function formatAirport(airport) {
-    const { name, icao_code } = airport || {};
-    if (name && icao_code) return `${icao_code} [${name}]`;
-    if (name) return name;
-    if (icao_code) return icao_code;
-    return '';
-}
-
-function formatVerticalAngle(angle) {
-    if (angle < 0) return 'below horizon'; // For very distant aircraft below observer altitude
-    if (angle < 5) return 'just above horizon';
-    if (angle < 15) return 'low in sky';
-    if (angle < 30) return 'midway up';
-    if (angle < 60) return 'high in sky';
-    if (angle < 80) return 'nearly overhead';
-    return 'directly overhead';
-}
-
-function formatTimePhrase(seconds, isFuture) {
-    const totalSecs = Math.abs(seconds);
-    const mins = Math.floor(totalSecs / 60),
-        secs = totalSecs % 60;
-    if (isFuture) {
-        if (totalSecs < 30) return `in ${totalSecs} seconds`;
-        if (totalSecs < 90) return secs > 45 ? `in just over a minute` : `in about a minute`;
-        if (mins < 5) return secs > 30 ? `in about ${mins + 1} minutes` : `in about ${mins} minutes`;
-        return `in about ${mins} minutes`;
-    } else {
-        if (totalSecs < 30) return `just now`;
-        if (totalSecs < 90) return `about a minute ago`;
-        return `about ${mins} minutes ago`;
-    }
-}
-
-const categoryDescriptions = {
-    A0: 'No Information',
-    A1: 'Light (<15.5k lbs)',
-    A2: 'Small (15.5-75k lbs)',
-    A3: 'Large (75-300k lbs)',
-    A4: 'High-Vortex Large (B757)',
-    A5: 'Heavy (>300k lbs)',
-    A6: 'High Performance (>5g and >400 kts)',
-    A7: 'Rotorcraft',
-    B0: 'No Information',
-    B1: 'Glider/Sailplane',
-    B2: 'Lighter-than-air',
-    B3: 'Parachutist/Skydiver',
-    B4: 'Ultralight/hang-glider/paraglider',
-    B5: 'Reserved',
-    B6: 'UAV/Drone',
-    B7: 'Space/Trans-atmospheric vehicle',
-    C0: 'No Information',
-    C1: 'Surface - Emergency Vehicle',
-    C2: 'Surface - Service Vehicle',
-    C3: 'Point Obstacle (incl. balloons)',
-    C4: 'Cluster Obstacle',
-    C5: 'Line Obstacle',
-    C6: 'Reserved',
-    C7: 'Reserved',
-    D0: 'No Information',
-    D1: 'Reserved',
-    D2: 'Reserved',
-    D3: 'Reserved',
-    D4: 'Reserved',
-    D5: 'Reserved',
-    D6: 'Reserved',
-    D7: 'Reserved',
-};
-function formatCategoryCode(categoryCode) {
-    if (!categoryCode) return '';
-    const description = categoryDescriptions[categoryCode];
-    return description ? `${categoryCode}: ${description}` : `${categoryCode}`;
-}
-
 function formatInit() {
-    return { formatAltitude, formatAirport, formatVerticalAngle, formatTimePhrase, formatCategoryCode };
+    return require('./tools-formats.js'); // TO FIX
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -197,7 +99,7 @@ function airportsInit(config, { location, range, vicinity }) {
     }
     if (vicinity) {
         const av = airports.findNearby(location.lat, location.lon, { distance: vicinity });
-        airportText.push(`${av.length} in vicinity (${vicinity}km): ${av.map((a) => formatAirport(a)).join(', ')}`);
+        airportText.push(`${av.length} in vicinity (${vicinity}km): ${av.map((a) => tools.formatAirport(a)).join(', ')}`);
     }
     console.error(`airports: ${airportText.join('; ')}`);
     return airports;
@@ -352,7 +254,7 @@ async function filterAircraft(filters, aircraftList) {
 function _filterStats(filter, aircrafts) {
     const list = aircrafts.filter((a) => filter.evaluate(a));
     return {
-        ...formatStatsList(filter.id, list),
+        ...tools.formatStatsList(filter.id, list),
         ...filter.getStats?.(aircrafts, list),
     };
 }
@@ -448,7 +350,7 @@ function flightHistoryStats() {
 }
 
 function flightHistoryStatsString({ tracked, entries, avg, oldest, newest }) {
-    return `tracked=${tracked}, entries=${entries}${avg === undefined ? '' : ', avg=' + avg}${oldest === undefined || newest === undefined ? '' : ', age=' + formatSecondsNicely(oldest) + '/' + formatSecondsNicely(newest)}`;
+    return `tracked=${tracked}, entries=${entries}${avg === undefined ? '' : ', avg=' + avg}${oldest === undefined || newest === undefined ? '' : ', age=' + tools.formatSecondsNicely(oldest) + '/' + tools.formatSecondsNicely(newest)}`;
 }
 
 function track(data) {
@@ -557,8 +459,8 @@ function alertMeta(format, aircraft) {
         aircraft.calculated.emergency.hasEmergency || aircraft.calculated.military.isMilitary || (aircraft.calculated.vicinity.isProximate && (aircraft.calculated.landing.isLanding || aircraft.calculated.lifting.isLifting));
 
     const { positionRelative: position, distance, altitude } = aircraft.calculated;
-    const positionInfo = position ? ` (${distance.toFixed(1)}km ${position.cardinalBearing} ${formatAltitude(altitude)})` : '';
-    const aircraftInfo = aircraftType ? ` <${formatCategoryCode(aircraftType)}>` : '';
+    const positionInfo = position ? ` (${distance.toFixed(1)}km ${position.cardinalBearing} ${tools.formatAltitude(altitude)})` : '';
+    const aircraftInfo = aircraftType ? ` <${tools.formatCategoryCode(aircraftType)}>` : '';
 
     const meta = {
         text: `detected`,
@@ -611,7 +513,7 @@ function stats(config, { flights, alerts, system }) {
             };
             const fetcherInfo = `requests=${requests}, success=${successful}/${successRate}`;
             const mappingInfo = mappingStats
-                ? `, mappings=${mappingStats.mapSize}/${mappingStats.uniqueFlights}/${mappingStats.hitRate}${mappingStats.oldest ? '/' + formatSecondsNicely(mappingStats.oldest.age) : ''}` // eslint-disable-line sonarjs/no-nested-conditional
+                ? `, mappings=${mappingStats.mapSize}/${mappingStats.uniqueFlights}/${mappingStats.hitRate}${mappingStats.oldest ? '/' + tools.formatSecondsNicely(mappingStats.oldest.age) : ''}` // eslint-disable-line sonarjs/no-nested-conditional
                 : '';
             console.log(`${time.toISOString()} STATUS/flights received=${received}, filtered=${filtered}, cached=${cached}, stored=(${flightHistoryStatsString(stored)}), fetched=(${fetcherInfo})${mappingInfo})`);
         } else if (error) {
