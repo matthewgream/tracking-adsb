@@ -2,7 +2,8 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // const helpers = require('./filter-helpers.js');
-const tools = { ...require('./tools-geometry.js'), ...require('./tools-statistics.js') };
+
+const tools = { ...require('./tools-geometry.js'), ...require('./tools-statistics.js'), ...require('./tools-formats.js') };
 const aircraft_info = require('./aircraft-info.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -176,7 +177,7 @@ module.exports = {
             };
         const [airport] = landing.airports;
         return {
-            text: `approaching ${this.extra.format.formatAirport(airport) || 'airport'}`,
+            text: `approaching ${tools.formatAirport(airport) || 'airport'}`,
             landingInfo: {
                 groundPosition: landing.groundPosition,
             },

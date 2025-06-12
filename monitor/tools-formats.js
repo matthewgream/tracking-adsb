@@ -7,6 +7,25 @@ const aircraft_info = require('./aircraft-info.js');
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+function formatKeyValues(object) {
+    return Object.entries(object)
+        .map(([key, value]) => `${key}=${value}`)
+        .join(', ');
+}
+function formatKeyCounts(object, field = undefined) {
+    const counts = field
+        ? object.reduce((acc, p) => {
+              acc[p[field]] = (acc[p[field]] || 0) + 1;
+              return acc;
+          }, {})
+        : Object.keys(object).reduce((acc, k) => {
+              acc[k] = (acc[k] || 0) + 1;
+              return acc;
+          }, {});
+    return Object.entries(counts)
+        .map(([key, value]) => `${key}=${value}`)
+        .join(', ');
+}
 function formatSecondsNicely(s) {
     if (s < 60) return s + 's';
     if (s < 3600) return Math.floor(s / 60) + 'm' + (s % 60 ? (s % 60) + 's' : '');
@@ -225,6 +244,9 @@ function buildAirportsFormat(airports, options = {}) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 module.exports = {
+    formatKeyValues,
+    formatKeyCounts,
+    //
     formatAltitude,
     formatAirport,
     formatVerticalAngle,

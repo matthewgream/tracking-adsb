@@ -2,7 +2,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // const helpers = require('./filter-helpers.js');
-const tools = { ...require('./tools-geometry.js'), ...require('./tools-statistics.js') };
+const tools = { ...require('./tools-geometry.js'), ...require('./tools-statistics.js'), ...require('./tools-formats.js') };
 const aircraft_info = require('./aircraft-info.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -214,7 +214,7 @@ module.exports = {
     },
     format: (aircraft) => {
         const { lifting } = aircraft.calculated;
-        const airportName = this.extra.format.formatAirport(lifting.hasKnownOrigin ? lifting.departureAirport : undefined);
+        const airportName = tools.formatAirport(lifting.hasKnownOrigin ? lifting.departureAirport : undefined);
         return {
             text: `climbing${airportName ? ' from ' + airportName : ''} at ${lifting.climbRate} ft/min`,
             liftingInfo: {

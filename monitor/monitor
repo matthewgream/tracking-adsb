@@ -65,7 +65,7 @@ function airportsInit(config, { location, range, vicinity }) {
                     ? `: ${av
                           .slice(0, 5)
                           .map((a) => tools.formatAirport(a))
-                          .join(', ')}${av.length > 5 ? ` +${av.length - 5} more` : ''}`
+                          .join(', ')}${av.length > 5 ? ' +' + av.length - 5 + ' more' : ''}`
                     : '';
             info.push(`${av.length} in vicinity (${vicinity}km)${vicinityList}`);
         }
@@ -74,19 +74,39 @@ function airportsInit(config, { location, range, vicinity }) {
     return airports;
 }
 
-function furtherInit(config, _data) {
-    return Object.fromEntries(
-        Object.entries(config).map(([name, options]) => {
-            let data;
-            try {
-                data = new (require(`./data-${name}.js`))({ ...options, directory: '../content' });
-                console.error(`data-${name}: ${data.getInfo()}`);
-            } catch (e) {
-                console.error(`data [${name}]: could not be loaded:`, e);
-            }
-            return [name, data];
-        })
+function furtherInit(config) {
+    const dataFurther = Object.fromEntries(
+        Object.entries(config)
+            .filter(([name]) => name !== 'data')
+            .map(([name, options]) => {
+                let data;
+                try {
+                    data = new (require(`./data-${name}.js`))({ ...options, directory: '../content' });
+                    console.error(`data-${name}: ${data.getInfo()}`);
+                } catch (e) {
+                    console.error(`data [${name}]: could not be loaded:`, e);
+                }
+                return [name, data];
+            })
     );
+
+    const { DataLoader } = require('./function-data.js');
+    const dataDirectory = config.data?.directory || '../content';
+    const dataLoader = new DataLoader(dataDirectory);
+    if (config.data?.preload && Array.isArray(config.data?.preload))
+        for (const filename of config.data.preload) {
+            try {
+                const data = dataLoader.load(filename);
+                console.error(`data-file[${filename}]${data.info ? ': ' + data.info : ''}`);
+            } catch (e) {
+                console.warn(`data-file[${filename}]: could be not preloaded:`, e.message);
+            }
+        }
+
+    return {
+        ...dataFurther,
+        loader: dataLoader,
+    };
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -97,17 +117,15 @@ const { AircraftData } = require('./aircraft-data.js');
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const filterModules = [
-    require('./filter-emergency.js'),
-    require('./filter-military.js'),
-    require('./filter-specific.js'),
-    require('./filter-squawks.js'),
+    require('./filter-emergency.js'), // refactored
+    require('./filter-attribute.js'), // refactored
     //
     require('./filter-anomaly.js'),
     require('./filter-weather.js'),
     // require('./filter-performance.js'), // too many false positives
     //
     require('./filter-airprox.js'),
-    require('./filter-airport.js'),
+    require('./filter-airport.js'), // refactored
     require('./filter-landing.js'),
     require('./filter-lifting.js'),
     require('./filter-loitering.js'),
@@ -115,7 +133,7 @@ const filterModules = [
     require('./filter-overhead.js'),
 ];
 
-function filtersInit(config, extra) {
+function filterInit(config, extra) {
     const filterSet = filterModules.filter((filter) => config[filter.id]?.enabled == undefined || config[filter.id]?.enabled);
     const filterMap = Object.fromEntries(filterSet.map((module) => [module.id, module]));
     filterSet.forEach((filter) => filter.config(config[filter.id], extra));
@@ -563,11 +581,10 @@ function systemInit(config) {
     const data = { location: config.location, range: config.range_max, vicinity: config.filters.vicinity.distance };
     const flights = flightsInit(config.flights);
     const airports = airportsInit(config.airports, data);
-    const further = furtherInit(config.further, data);
-    const format = require('./tools-formats.js'); // TO REMOVE
-    const filters = filtersInit(config.filters, { data: { ...data, ...further, airports }, format });
+    const further = furtherInit(config.further);
+    const filters = filterInit(config.filters, { data: { ...data, ...further, airports } });
     const deliver = deliverInit(config.deliver);
-    return { flights, airports, further, format, filters, deliver };
+    return { flights, airports, further, filters, deliver };
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -597,6 +614,7 @@ const shutdown = async () => {
     clearInterval(loopInterval);
     system?.flights?.getMappings()?.destroy();
     await system?.deliver?.destroy();
+    // eslint-disable-next-line n/no-process-exit
     process.exit(0);
 };
 process.on('SIGINT', shutdown);

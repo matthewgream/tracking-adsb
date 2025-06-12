@@ -2,7 +2,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // const helpers = require('./filter-helpers.js');
-const tools = require('./tools-geometry.js');
+const tools = { ...require('./tools-geometry.js'), ...require('./tools-statistics.js'), ...require('./tools-formats.js') };
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -320,7 +320,7 @@ module.exports = {
     format: (aircraft) => {
         const { loitering } = aircraft.calculated;
         const { lat, lon } = loitering.loiteringCenter;
-        const position = this.extra.format.formatAirport(this.extra.data.airports.findNearby(lat, lon, { distance: 5 })[0]);
+        const position = tools.formatAirport(this.extra.data.airports.findNearby(lat, lon, { distance: 5 })[0]);
         const locationText = position || `${loitering.loiteringRadius.toFixed(1)}km radius`;
         const scorePercent = Math.round(loitering.score * 100);
         return {

@@ -2,7 +2,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 //const helpers = require('./filter-helpers.js');
-const tools = { ...require('./tools-geometry.js'), ...require('./tools-statistics.js') };
+const tools = { ...require('./tools-geometry.js'), ...require('./tools-statistics.js'), ...require('./tools-formats.js') };
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -182,9 +182,9 @@ module.exports = {
         let verticalInfo = '';
         if (verticalRate > 0) verticalInfo = ` climbing at ${verticalRate} ft/min`;
         else if (verticalRate < 0) verticalInfo = ` descending at ${Math.abs(verticalRate)} ft/min`;
-        const overheadTimePhrase = this.extra.format.formatTimePhrase(overheadSeconds, overheadFuture);
-        const altitudeAtOverhead = this.extra.format.formatAltitude(overheadAltitude);
-        const verticalAngleDescription = this.extra.format.formatVerticalAngle(verticalAngle);
+        const overheadTimePhrase = tools.formatTimePhrase(overheadSeconds, overheadFuture);
+        const altitudeAtOverhead = tools.formatAltitude(overheadAltitude);
+        const verticalAngleDescription = tools.formatVerticalAngle(verticalAngle);
         const observationGuide = overheadFuture ? `${overheadTimePhrase} at ${altitudeAtOverhead}, look ${approachCardinal} ${verticalAngleDescription}` : `passed ${overheadTimePhrase} at ${altitudeAtOverhead}`;
         return {
             text: `overhead${verticalInfo}, ${observationGuide}`,
