@@ -143,7 +143,6 @@ function calculateEnergyState(aircraft) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Airport compatibility and runway requirements
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 function getMinRunwayLength(aircraftCategory) {
@@ -165,6 +164,131 @@ function getMinRunwayLength(aircraftCategory) {
     };
 
     return minRunwayLengths[aircraftCategory] || 3000; // Conservative default
+}
+
+/**
+ * Determine if aircraft is at typical airport operation speed
+ * Different aircraft categories have different approach/departure speeds
+ * @param {Object} aircraft - Aircraft object with gs and category
+ * @returns {boolean} True if aircraft is at airport operation speed
+ */
+function isAircraftAtAirportSpeed(aircraft) {
+    if (!aircraft.gs) return false;
+
+    // Define typical airport operation speeds by category (in knots)
+    const airportSpeeds = {
+        A1: { min: 50, max: 150 }, // Light aircraft
+        A2: { min: 80, max: 200 }, // Small aircraft
+        A3: { min: 120, max: 250 }, // Large aircraft
+        A4: { min: 120, max: 250 }, // B757
+        A5: { min: 130, max: 280 }, // Heavy aircraft
+        A6: { min: 150, max: 350 }, // High performance
+        A7: { min: 0, max: 150 }, // Helicopters (can hover)
+        B1: { min: 40, max: 100 }, // Gliders
+        B4: { min: 30, max: 80 }, // Ultralights
+        B6: { min: 20, max: 100 }, // UAVs
+    };
+
+    const speeds = airportSpeeds[aircraft.category] || { min: 60, max: 250 }; // Default
+    return aircraft.gs >= speeds.min && aircraft.gs <= speeds.max;
+}
+
+/**
+ * Determine if aircraft is at typical airport operation altitude
+ * @param {Object} aircraft - Aircraft object with altitude and category
+ * @returns {boolean} True if aircraft is at airport operation altitude
+ */
+function isAircraftAtAirportAltitude(aircraft) {
+    if (!aircraft.calculated?.altitude) return false;
+
+    // Different categories might have different pattern altitudes
+    const maxAltitudes = {
+        A1: 3000, // Light aircraft typically fly lower patterns
+        A2: 4000, // Small aircraft
+        A3: 5000, // Large aircraft
+        A4: 5000, // B757
+        A5: 6000, // Heavy aircraft might be higher on approach
+        A7: 2000, // Helicopters typically lower
+        B1: 3000, // Gliders
+        B4: 1500, // Ultralights very low
+        B6: 2000, // Small UAVs
+    };
+
+    const maxAlt = maxAltitudes[aircraft.category] || 5000; // Default
+    return aircraft.calculated.altitude <= maxAlt;
+}
+
+/**
+ * Calculate compatibility factor between airport size and aircraft category
+ * @param {Object} airport - Airport object with runways, iata_code, type
+ * @param {Object} aircraft - Aircraft object with category
+ * @returns {number} Compatibility factor (0-1)
+ */
+function calculateAirportSizeCompatibilityFactor(airport, aircraft) {
+    const hasIATA = airport.iata_code && airport.iata_code.trim() !== '';
+    const runwayLength = airport.runwayLengthMax || airport.runways?.reduce((max, runway) => Math.max(runway.length_ft || 0, max), 0) || 0;
+
+    // Base size score for airport
+    let airportSizeScore = 0;
+    if (runwayLength > 8000)
+        airportSizeScore = 1; // Major airport
+    else if (runwayLength > 5000)
+        airportSizeScore = 0.7; // Medium airport
+    else if (runwayLength > 3000)
+        airportSizeScore = 0.4; // Small airport
+    else if (hasIATA)
+        airportSizeScore = 0.5; // Has IATA but unknown runway
+    else airportSizeScore = 0.2; // Very small/unknown
+
+    // Match aircraft category to airport size
+    let compatibilityMultiplier = 1;
+
+    switch (aircraft.category) {
+        case 'A5': // Heavy aircraft
+        case 'A4': // B757
+            // Heavy aircraft prefer major airports
+            if (airportSizeScore < 0.7) compatibilityMultiplier = 0.3;
+            else if (airportSizeScore >= 1) compatibilityMultiplier = 1.2;
+            break;
+
+        case 'A3': // Large aircraft
+            // Large aircraft need medium+ airports
+            if (airportSizeScore < 0.4) compatibilityMultiplier = 0.4;
+            else if (airportSizeScore >= 0.7) compatibilityMultiplier = 1.1;
+            break;
+
+        case 'A2': // Small aircraft
+            // Small aircraft are flexible but still prefer larger airports
+            if (airportSizeScore < 0.2) compatibilityMultiplier = 0.6;
+            // eslint-disable-next-line sonarjs/no-redundant-assignments
+            else if (airportSizeScore >= 0.4) compatibilityMultiplier = 1;
+            break;
+
+        case 'A1': // Light aircraft
+        case 'B4': // Ultralight
+            // Light aircraft can use any airport, but might prefer smaller ones
+            if (airportSizeScore <= 0.4) compatibilityMultiplier = 1.1;
+            else if (airportSizeScore >= 1) compatibilityMultiplier = 0.8;
+            break;
+
+        case 'A7': // Helicopters
+            // Helicopters can use any airport but also heliports
+            // eslint-disable-next-line unicorn/prefer-ternary
+            if (airport.type === 'heliport') compatibilityMultiplier = 1.5;
+            else compatibilityMultiplier = 0.9;
+            break;
+
+        case 'B1': // Gliders
+            // Gliders prefer specific airports
+            if (airport.type === 'gliderport' || runwayLength < 3000) compatibilityMultiplier = 1.2;
+            break;
+
+        default:
+            // Unknown category - neutral
+            compatibilityMultiplier = 0.8;
+    }
+
+    return airportSizeScore * compatibilityMultiplier;
 }
 
 function isAirportCompatibleWithAircraft(airport, aircraft) {
@@ -193,7 +317,6 @@ function isAirportCompatibleWithAircraft(airport, aircraft) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Runway alignment detection with trajectory analysis and scoring
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 function findAlignedRunwayWithScore(airport, aircraft, aircraftData = undefined) {
@@ -300,61 +423,6 @@ function findAlignedRunwayWithScore(airport, aircraft, aircraftData = undefined)
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 /**
- * Determine if aircraft is at typical airport operation speed
- * Different aircraft categories have different approach/departure speeds
- * @param {Object} aircraft - Aircraft object with gs and category
- * @returns {boolean} True if aircraft is at airport operation speed
- */
-function isAircraftAtAirportSpeed(aircraft) {
-    if (!aircraft.gs) return false;
-
-    // Define typical airport operation speeds by category (in knots)
-    const airportSpeeds = {
-        A1: { min: 50, max: 150 }, // Light aircraft
-        A2: { min: 80, max: 200 }, // Small aircraft
-        A3: { min: 120, max: 250 }, // Large aircraft
-        A4: { min: 120, max: 250 }, // B757
-        A5: { min: 130, max: 280 }, // Heavy aircraft
-        A6: { min: 150, max: 350 }, // High performance
-        A7: { min: 0, max: 150 }, // Helicopters (can hover)
-        B1: { min: 40, max: 100 }, // Gliders
-        B4: { min: 30, max: 80 }, // Ultralights
-        B6: { min: 20, max: 100 }, // UAVs
-    };
-
-    const speeds = airportSpeeds[aircraft.category] || { min: 60, max: 250 }; // Default
-    return aircraft.gs >= speeds.min && aircraft.gs <= speeds.max;
-}
-
-/**
- * Determine if aircraft is at typical airport operation altitude
- * @param {Object} aircraft - Aircraft object with altitude and category
- * @returns {boolean} True if aircraft is at airport operation altitude
- */
-function isAircraftAtAirportAltitude(aircraft) {
-    if (!aircraft.calculated?.altitude) return false;
-
-    // Different categories might have different pattern altitudes
-    const maxAltitudes = {
-        A1: 3000, // Light aircraft typically fly lower patterns
-        A2: 4000, // Small aircraft
-        A3: 5000, // Large aircraft
-        A4: 5000, // B757
-        A5: 6000, // Heavy aircraft might be higher on approach
-        A7: 2000, // Helicopters typically lower
-        B1: 3000, // Gliders
-        B4: 1500, // Ultralights very low
-        B6: 2000, // Small UAVs
-    };
-
-    const maxAlt = maxAltitudes[aircraft.category] || 5000; // Default
-    return aircraft.calculated.altitude <= maxAlt;
-}
-
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-/**
  * Get relevant squawk codes for a specific airport
  * This is a framework that can be expanded with airport-specific data
  * @param {Object} airport - Airport object with icao_code
@@ -406,6 +474,9 @@ function getSquawksForAirport(airport) {
     return [...new Set(codes)];
 }
 
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 /**
  * Check if a squawk code indicates airport operations
  * @param {string} squawk - Squawk code
@@ -441,77 +512,90 @@ function isAirportOperationsSquawk(squawk, region = undefined) {
     return patternCodes.includes(squawk);
 }
 
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+const FORMATION_THRESHOLDS = {
+    trackDifference: 5, // degrees
+    speedDifference: 10, // knots
+    climbRateDifference: 200, // fpm
+    altitudeDifference: 500, // feet for close formation
+};
+
 /**
- * Calculate compatibility factor between airport size and aircraft category
- * @param {Object} airport - Airport object with runways, iata_code, type
- * @param {Object} aircraft - Aircraft object with category
- * @returns {number} Compatibility factor (0-1)
+ * Detect if two aircraft are likely flying in formation
+ * @param {Object} aircraft1 - First aircraft
+ * @param {Object} aircraft2 - Second aircraft
+ * @param {Object} options - Optional thresholds
+ * @returns {Object} Formation detection result with confidence
  */
-function calculateAirportSizeCompatibilityFactor(airport, aircraft) {
-    const hasIATA = airport.iata_code && airport.iata_code.trim() !== '';
-    const runwayLength = airport.runwayLengthMax || airport.runways?.reduce((max, runway) => Math.max(runway.length_ft || 0, max), 0) || 0;
+function isLikelyFormation(aircraft1, aircraft2, options = {}) {
+    const thresholds = { ...FORMATION_THRESHOLDS, ...options };
+    const factors = [];
 
-    // Base size score for airport
-    let airportSizeScore = 0;
-    if (runwayLength > 8000)
-        airportSizeScore = 1; // Major airport
-    else if (runwayLength > 5000)
-        airportSizeScore = 0.7; // Medium airport
-    else if (runwayLength > 3000)
-        airportSizeScore = 0.4; // Small airport
-    else if (hasIATA)
-        airportSizeScore = 0.5; // Has IATA but unknown runway
-    else airportSizeScore = 0.2; // Very small/unknown
+    // Track alignment check
+    if (aircraft1.track !== undefined && aircraft2.track !== undefined) {
+        const trackDiff = Math.abs(aircraft1.track - aircraft2.track);
+        const normalizedDiff = trackDiff > 180 ? 360 - trackDiff : trackDiff;
 
-    // Match aircraft category to airport size
-    let compatibilityMultiplier = 1;
-
-    switch (aircraft.category) {
-        case 'A5': // Heavy aircraft
-        case 'A4': // B757
-            // Heavy aircraft prefer major airports
-            if (airportSizeScore < 0.7) compatibilityMultiplier = 0.3;
-            else if (airportSizeScore >= 1) compatibilityMultiplier = 1.2;
-            break;
-
-        case 'A3': // Large aircraft
-            // Large aircraft need medium+ airports
-            if (airportSizeScore < 0.4) compatibilityMultiplier = 0.4;
-            else if (airportSizeScore >= 0.7) compatibilityMultiplier = 1.1;
-            break;
-
-        case 'A2': // Small aircraft
-            // Small aircraft are flexible but still prefer larger airports
-            if (airportSizeScore < 0.2) compatibilityMultiplier = 0.6;
-            // eslint-disable-next-line sonarjs/no-redundant-assignments
-            else if (airportSizeScore >= 0.4) compatibilityMultiplier = 1;
-            break;
-
-        case 'A1': // Light aircraft
-        case 'B4': // Ultralight
-            // Light aircraft can use any airport, but might prefer smaller ones
-            if (airportSizeScore <= 0.4) compatibilityMultiplier = 1.1;
-            else if (airportSizeScore >= 1) compatibilityMultiplier = 0.8;
-            break;
-
-        case 'A7': // Helicopters
-            // Helicopters can use any airport but also heliports
-            // eslint-disable-next-line unicorn/prefer-ternary
-            if (airport.type === 'heliport') compatibilityMultiplier = 1.5;
-            else compatibilityMultiplier = 0.9;
-            break;
-
-        case 'B1': // Gliders
-            // Gliders prefer specific airports
-            if (airport.type === 'gliderport' || runwayLength < 3000) compatibilityMultiplier = 1.2;
-            break;
-
-        default:
-            // Unknown category - neutral
-            compatibilityMultiplier = 0.8;
+        if (normalizedDiff <= thresholds.trackDifference) {
+            factors.push({ factor: 'track', match: true, diff: normalizedDiff });
+        } else {
+            factors.push({ factor: 'track', match: false, diff: normalizedDiff });
+        }
     }
 
-    return airportSizeScore * compatibilityMultiplier;
+    // Speed matching check
+    if (aircraft1.gs !== undefined && aircraft2.gs !== undefined) {
+        const speedDiff = Math.abs(aircraft1.gs - aircraft2.gs);
+
+        if (speedDiff <= thresholds.speedDifference) {
+            factors.push({ factor: 'speed', match: true, diff: speedDiff });
+        } else {
+            factors.push({ factor: 'speed', match: false, diff: speedDiff });
+        }
+    }
+
+    // Climb rate matching check
+    if (aircraft1.baro_rate !== undefined && aircraft2.baro_rate !== undefined) {
+        const climbDiff = Math.abs(aircraft1.baro_rate - aircraft2.baro_rate);
+
+        if (climbDiff <= thresholds.climbRateDifference) {
+            factors.push({ factor: 'climbRate', match: true, diff: climbDiff });
+        } else {
+            factors.push({ factor: 'climbRate', match: false, diff: climbDiff });
+        }
+    }
+
+    // Altitude consistency check
+    if (aircraft1.calculated?.altitude !== undefined && aircraft2.calculated?.altitude !== undefined) {
+        const altDiff = Math.abs(aircraft1.calculated.altitude - aircraft2.calculated.altitude);
+
+        if (altDiff <= thresholds.altitudeDifference) {
+            factors.push({ factor: 'altitude', match: true, diff: altDiff });
+        } else {
+            factors.push({ factor: 'altitude', match: false, diff: altDiff });
+        }
+    }
+
+    // Calculate confidence based on matching factors
+    const matchingFactors = factors.filter((f) => f.match).length;
+    const totalFactors = factors.length;
+
+    if (totalFactors === 0) {
+        return { isFormation: false, confidence: 0, factors: [] };
+    }
+
+    const confidence = matchingFactors / totalFactors;
+    const isFormation = matchingFactors >= 3 && confidence >= 0.75;
+
+    return {
+        isFormation,
+        confidence,
+        factors,
+        matchingFactors,
+        totalFactors,
+    };
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -533,6 +617,9 @@ module.exports = {
     getSquawksForAirport,
     isAirportOperationsSquawk,
     calculateAirportSizeCompatibilityFactor,
+    //
+    isLikelyFormation,
+    FORMATION_THRESHOLDS,
 };
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------

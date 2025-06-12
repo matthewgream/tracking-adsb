@@ -86,16 +86,13 @@ function mapSquawkTypeToCategory(squawkType) {
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function detectSquawkPatterns(conf, aircraft, _categories) {
-    if (!aircraft.squawk || !this.extra.data?.squawks) return [];
+function detectSquawkPatterns(conf, aircraft) {
+    if (!aircraft.squawk || !conf.squawks) return [];
 
-    const matches = this.extra.data.squawks.findByCode(aircraft.squawk);
+    const matches = conf.squawks.findByCode(aircraft.squawk);
 
     // Check if it's a watched code or type
-    const isWatchedCode = this.conf.watchCodes.has(aircraft.squawk);
-    const isWatchedType = matches.some((match) => this.conf.watchTypes.has(match.type));
-
-    if (!isWatchedCode && !isWatchedType) return [];
+    if (!conf.watchCodes.has(aircraft.squawk) && !matches.some((match) => conf.watchTypes.has(match.type))) return [];
 
     return matches.map((match) => ({
         detector: 'squawk',
@@ -117,8 +114,8 @@ function detectSquawkPatterns(conf, aircraft, _categories) {
 // Anomaly detectors for squawk validation
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function detectGroundTestingMismatch(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectGroundTestingMismatch(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const groundTestingMatch = squawkMatches.find((match) => match.begin === '0002');
     if (groundTestingMatch && aircraft.calculated?.altitude > 500)
         return {
@@ -133,8 +130,8 @@ function detectGroundTestingMismatch(aircraft, context) {
     return undefined;
 }
 
-function detectMilitarySquawkMismatch(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectMilitarySquawkMismatch(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const militarySquawk = squawkMatches.find((match) => match.type === 'military' || (match.description && match.description.some((desc) => desc.toLowerCase().includes('military'))));
     if (militarySquawk && !aircraft.calculated?.military?.isMilitary)
         return {
@@ -149,7 +146,7 @@ function detectMilitarySquawkMismatch(aircraft, context) {
     return undefined;
 }
 
-function detectAltitudeMismatch(aircraft, _context) {
+function detectAltitudeMismatch(_conf, aircraft) {
     if (aircraft.squawk === '7000' && aircraft.calculated?.altitude > 20000)
         return {
             type: 'vfr-high-altitude',
@@ -173,8 +170,8 @@ function detectAltitudeMismatch(aircraft, _context) {
     return undefined;
 }
 
-function detectInappropriateSpecialUseCode(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectInappropriateSpecialUseCode(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const specialMatches = squawkMatches.filter((match) => match.type === 'special' || match.type === 'royal' || match.type === 'display');
     for (const match of specialMatches) {
         if (match.begin === '7003' && aircraft.gs && aircraft.gs < 200)
@@ -201,8 +198,8 @@ function detectInappropriateSpecialUseCode(aircraft, context) {
     return undefined;
 }
 
-function detectModeSTesting(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectModeSTesting(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const monitorMatch = squawkMatches.find((match) => match.begin === '7776' || match.begin === '7777');
     if (monitorMatch && aircraft.gs > 0)
         return {
@@ -217,8 +214,8 @@ function detectModeSTesting(aircraft, context) {
     return undefined;
 }
 
-function detectModeS1000Misuse(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectModeS1000Misuse(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const mode1000Match = squawkMatches.find((match) => match.begin === '1000');
     if (mode1000Match) {
         if (!aircraft.flight || aircraft.flight === '[' + aircraft.hex + ']')
@@ -245,8 +242,8 @@ function detectModeS1000Misuse(aircraft, context) {
     return undefined;
 }
 
-function detectAerobaticsCodeMisuse(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectAerobaticsCodeMisuse(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const aeroMatch = squawkMatches.find((match) => match.begin === '7004');
     if (aeroMatch) {
         if (aircraft.roll !== undefined && Math.abs(aircraft.roll) < 5 && aircraft.baro_rate !== undefined && Math.abs(aircraft.baro_rate) < 500)
@@ -273,8 +270,8 @@ function detectAerobaticsCodeMisuse(aircraft, context) {
     return undefined;
 }
 
-function detectHighEnergyManeuversCode(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectHighEnergyManeuversCode(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const hemMatch = squawkMatches.find((match) => match.begin === '7005');
     if (hemMatch) {
         if (aircraft.gs < 250)
@@ -301,8 +298,8 @@ function detectHighEnergyManeuversCode(aircraft, context) {
     return undefined;
 }
 
-function detectMonitoringCodeAnomalies(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectMonitoringCodeAnomalies(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const monitoringMatch = squawkMatches.find((match) => match.type === 'monitoring');
     if (monitoringMatch) {
         if (aircraft.alt_baro > 15000)
@@ -329,8 +326,8 @@ function detectMonitoringCodeAnomalies(aircraft, context) {
     return undefined;
 }
 
-function detectConspicuityConflicts(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectConspicuityConflicts(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const conspicuityMatch = squawkMatches.find((match) => match.type === 'conspicuity');
     if (conspicuityMatch) {
         if (aircraft.squawk === '7000' && aircraft.nav_modes && aircraft.nav_modes.includes('vnav'))
@@ -357,8 +354,8 @@ function detectConspicuityConflicts(aircraft, context) {
     return undefined;
 }
 
-function detectUASAnomalies(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectUASAnomalies(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const uasMatch = squawkMatches.find((match) => match.type === 'uas');
     if (uasMatch) {
         if (aircraft.squawk === '7400' && aircraft.track_rate && Math.abs(aircraft.track_rate) > 3)
@@ -385,8 +382,8 @@ function detectUASAnomalies(aircraft, context) {
     return undefined;
 }
 
-function detectEmergencySquawkWithoutEmergency(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectEmergencySquawkWithoutEmergency(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const emergencySquawk = squawkMatches.find((match) => match.type === 'emergency' || ['7500', '7600', '7700'].includes(match.begin));
     if (emergencySquawk) {
         if (!aircraft.emergency || aircraft.emergency === 'none')
@@ -413,8 +410,8 @@ function detectEmergencySquawkWithoutEmergency(aircraft, context) {
     return undefined;
 }
 
-function detectOffshoreCodeMisuse(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectOffshoreCodeMisuse(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const offshoreMatch = squawkMatches.find((match) => match.type === 'offshore');
     if (offshoreMatch) {
         if (aircraft.alt_baro > 10000)
@@ -441,8 +438,8 @@ function detectOffshoreCodeMisuse(aircraft, context) {
     return undefined;
 }
 
-function detectMilitaryLowLevelMisuse(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectMilitaryLowLevelMisuse(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const lowLevelMatch = squawkMatches.find((match) => match.begin === '7001');
     if (lowLevelMatch) {
         if (aircraft.alt_baro > 5000)
@@ -469,8 +466,8 @@ function detectMilitaryLowLevelMisuse(aircraft, context) {
     return undefined;
 }
 
-function detectHelicopterCodeMismatch(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectHelicopterCodeMismatch(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const heliMatch = squawkMatches.find(
         (match) => match.type === 'helicopter' || (match.description && match.description.some((desc) => desc.toLowerCase().includes('helicopter') || desc.toLowerCase().includes('rotary') || desc.toLowerCase().includes('hems')))
     );
@@ -489,8 +486,8 @@ function detectHelicopterCodeMismatch(aircraft, context) {
     return undefined;
 }
 
-function detectLightAircraftCodeMismatch(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectLightAircraftCodeMismatch(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const gliderMatch = squawkMatches.find((match) => match.description?.some((desc) => desc.toLowerCase().includes('glider') || desc.toLowerCase().includes('towing')));
     if (gliderMatch) {
         if (aircraft.category && !['A1', 'B1', 'B4'].includes(aircraft.category))
@@ -507,7 +504,7 @@ function detectLightAircraftCodeMismatch(aircraft, context) {
     return undefined;
 }
 
-function detectSurfaceVehicleCodeAirborne(aircraft, context) {
+function detectSurfaceVehicleCodeAirborne(conf, aircraft) {
     if (aircraft.category && ['C1', 'C2'].includes(aircraft.category)) {
         if (aircraft.alt_baro > 100 || aircraft.gs > 80)
             return {
@@ -520,7 +517,7 @@ function detectSurfaceVehicleCodeAirborne(aircraft, context) {
                 value: aircraft.squawk,
             };
     }
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const groundMatch = squawkMatches.find((match) => match.type === 'ground');
     if (groundMatch && aircraft.category && aircraft.category.startsWith('A')) {
         if (aircraft.gs > 50)
@@ -537,9 +534,9 @@ function detectSurfaceVehicleCodeAirborne(aircraft, context) {
     return undefined;
 }
 
-function detectUAVCategoryAnomalies(aircraft, context) {
+function detectUAVCategoryAnomalies(conf, aircraft) {
     if (aircraft.category === 'B6') {
-        const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+        const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
         const mannedCodes = squawkMatches.find((match) => ['military', 'royal', 'police', 'hems'].includes(match.type) && !match.description?.some((desc) => desc.toLowerCase().includes('uas') || desc.toLowerCase().includes('unmanned')));
         if (mannedCodes)
             return {
@@ -565,8 +562,8 @@ function detectUAVCategoryAnomalies(aircraft, context) {
     return undefined;
 }
 
-function detectAircraftSizeMismatch(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectAircraftSizeMismatch(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const lightMatch = squawkMatches.find((match) => match.description?.some((desc) => desc.toLowerCase().includes('light aircraft') || desc.toLowerCase().includes('microlight') || desc.toLowerCase().includes('ultralight')));
     if (lightMatch && aircraft.category && ['A3', 'A4', 'A5'].includes(aircraft.category))
         return {
@@ -581,8 +578,8 @@ function detectAircraftSizeMismatch(aircraft, context) {
     return undefined;
 }
 
-function detectParachutingCodeValidation(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectParachutingCodeValidation(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const paraMatch = squawkMatches.find((match) => match.begin === '0033');
     if (paraMatch) {
         if (aircraft.category && ['A4', 'A5'].includes(aircraft.category))
@@ -609,8 +606,8 @@ function detectParachutingCodeValidation(aircraft, context) {
     return undefined;
 }
 
-function detectDescriptionBasedAnomalies(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectDescriptionBasedAnomalies(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const anomalies = [];
 
     squawkMatches
@@ -685,8 +682,8 @@ function detectDescriptionBasedAnomalies(aircraft, context) {
     return anomalies.length > 0 ? anomalies : undefined;
 }
 
-function detectSAROperationsValidation(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectSAROperationsValidation(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const sarMatch = squawkMatches.find((match) => match.begin === '0023');
     if (sarMatch) {
         if (aircraft.category && ['B1', 'B4', 'C1', 'C2'].includes(aircraft.category))
@@ -713,8 +710,8 @@ function detectSAROperationsValidation(aircraft, context) {
     return undefined;
 }
 
-function detectTrainingCodeValidation(aircraft, context) {
-    const squawkMatches = context.extra.data?.squawks?.findByCode(aircraft.squawk) || [];
+function detectTrainingCodeValidation(conf, aircraft) {
+    const squawkMatches = conf.squawks?.findByCode(aircraft.squawk) || [];
     const studentMatch = squawkMatches.find((match) => match.description?.some((desc) => desc.toLowerCase().includes('student')));
     if (studentMatch) {
         if (aircraft.category && !['A1', 'A2', 'B1'].includes(aircraft.category))
@@ -744,6 +741,32 @@ function detectTrainingCodeValidation(aircraft, context) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+const SQUAWK_DETECTORS = [
+    detectGroundTestingMismatch,
+    detectMilitarySquawkMismatch,
+    detectAltitudeMismatch,
+    detectInappropriateSpecialUseCode,
+    detectModeSTesting,
+    detectModeS1000Misuse,
+    detectAerobaticsCodeMisuse,
+    detectHighEnergyManeuversCode,
+    detectMonitoringCodeAnomalies,
+    detectConspicuityConflicts,
+    detectUASAnomalies,
+    detectEmergencySquawkWithoutEmergency,
+    detectOffshoreCodeMisuse,
+    detectMilitaryLowLevelMisuse,
+    detectHelicopterCodeMismatch,
+    detectLightAircraftCodeMismatch,
+    detectSurfaceVehicleCodeAirborne,
+    detectUAVCategoryAnomalies,
+    detectAircraftSizeMismatch,
+    detectParachutingCodeValidation,
+    detectDescriptionBasedAnomalies,
+    detectSAROperationsValidation,
+    detectTrainingCodeValidation,
+];
+
 module.exports = {
     id: 'squawk',
     name: 'Squawk code pattern detection',
@@ -753,44 +776,20 @@ module.exports = {
         this.extra = extra;
         this.categories = categories;
 
-        if (this.extra.data?.squawks === undefined) console.error('filter-attribute-squawk: squawk data not available');
-
         this.conf.typePriorities = this.conf.typePriorities || DEFAULT_TYPE_PRIORITIES;
         this.conf.codePriorities = this.conf.codePriorities || DEFAULT_CODE_PRIORITIES;
         this.conf.watchCodes = new Set(this.conf.watchCodes || Object.keys(DEFAULT_CODE_PRIORITIES));
         this.conf.watchTypes = new Set(this.conf.watchTypes || ['emergency', 'sar', 'hems', 'police', 'royal', 'military', 'special']);
+        this.conf.squawks = this.extra.data?.squawks;
 
-        // Log configuration
-        if (this.extra.data?.squawks) console.error(`filter-attribute-squawk: configured: watching ${this.conf.watchCodes.size} codes, ${this.conf.watchTypes.size} types (${[...this.conf.watchTypes].join(', ')})`);
+        console.error(
+            `filter-attribute-squawk: configured: squawk-data=${this.conf.squawks ? 'available' : 'unavailable'}, watching ${this.conf.watchCodes.size} codes, ${this.conf.watchTypes.size} types (${[...this.conf.watchTypes].join(', ')})`
+        );
     },
 
-    detect: (conf, aircraft, categories) => detectSquawkPatterns(this.conf, aircraft, categories),
+    detect: (_conf, aircraft, _categories) => detectSquawkPatterns(this.conf, aircraft),
 
-    detectors: [
-        detectGroundTestingMismatch,
-        detectMilitarySquawkMismatch,
-        detectAltitudeMismatch,
-        detectInappropriateSpecialUseCode,
-        detectModeSTesting,
-        detectModeS1000Misuse,
-        detectAerobaticsCodeMisuse,
-        detectHighEnergyManeuversCode,
-        detectMonitoringCodeAnomalies,
-        detectConspicuityConflicts,
-        detectUASAnomalies,
-        detectEmergencySquawkWithoutEmergency,
-        detectOffshoreCodeMisuse,
-        detectMilitaryLowLevelMisuse,
-        detectHelicopterCodeMismatch,
-        detectLightAircraftCodeMismatch,
-        detectSurfaceVehicleCodeAirborne,
-        detectUAVCategoryAnomalies,
-        detectAircraftSizeMismatch,
-        detectParachutingCodeValidation,
-        detectDescriptionBasedAnomalies,
-        detectSAROperationsValidation,
-        detectTrainingCodeValidation,
-    ],
+    getDetectors: () => SQUAWK_DETECTORS.map((detector) => (aircraft, context) => detector(this.conf, aircraft, context)),
 };
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------

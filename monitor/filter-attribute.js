@@ -32,38 +32,10 @@ const COMMON_CATEGORIES = {
     'special-interest': { priority: 10, warn: false, color: 'gray' },
     historic: { priority: 11, warn: false, color: 'brown' },
     surveillance: { priority: 12, warn: false, color: 'darkgray' },
+
+    // Leftover!
+    civilian: { priority: 13, warn: false, color: 'black' },
 };
-
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-function detectSpecific(conf, aircraft, detectors) {
-    const allMatches = [];
-
-    // Run each detector and collect matches
-    for (const detector of detectors) {
-        if (!detector.enabled) continue;
-
-        const matches = detector.detect(conf, aircraft, COMMON_CATEGORIES);
-        if (matches && matches.length > 0) {
-            allMatches.push(...matches);
-        }
-    }
-
-    if (allMatches.length === 0) return undefined;
-
-    // Sort matches by priority
-    allMatches.sort((a, b) => {
-        const aPri = COMMON_CATEGORIES[a.category]?.priority || 999;
-        const bPri = COMMON_CATEGORIES[b.category]?.priority || 999;
-        return aPri - bPri;
-    });
-
-    return {
-        isSpecific: true,
-        matches: allMatches,
-        primaryMatch: allMatches[0],
-    };
-}
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -77,6 +49,7 @@ module.exports = {
         this.extra = extra;
 
         this.categories = COMMON_CATEGORIES;
+        this.categoriesSuppressed = ['civilian']; // XXX
 
         this.detectors = [
             {
@@ -99,7 +72,8 @@ module.exports = {
         this.detectors.filter((detector) => detector.enabled && detector.module.config).forEach((detector) => detector.module.config(conf?.[detector.module.id] ?? {}, extra, COMMON_CATEGORIES));
         this.anomalyDetector = new AnomalyDetector('attribute');
         this.anomalyDetector.setEnabled(conf?.detectAnomalies !== false);
-        this.detectors.filter((detector) => detector.enabled && detector.module.detectors).forEach((detector) => detector.module.detectors?.forEach((d) => this.anomalyDetector.addDetector(d)));
+
+        this.detectors.filter((detector) => detector.enabled && detector.module.getDetectors).forEach((detector) => detector.module.getDetectors().forEach((d) => this.anomalyDetector.addDetector(d)));
 
         console.error(
             `filter-attribute: ${this.anomalyDetector.detectors.length} detectors active, ${this.detectors.length} modules: ${this.detectors
@@ -109,82 +83,113 @@ module.exports = {
         );
     },
     preprocess: (aircraft, context) => {
-        aircraft.calculated.specific = { isSpecific: false };
+        aircraft.calculated.specific = { hasMatches: false };
         aircraft.calculated.military = { isMilitary: false };
 
+        // Run preprocessing for all detectors
         this.detectors.filter((detector) => detector.enabled && detector.module.preprocess).forEach((detector) => detector.module.preprocess(aircraft, context));
 
-        const specific = detectSpecific(
-            this.conf,
-            aircraft,
-            this.detectors.map((d) => d.module)
-        );
-        if (specific) {
-            aircraft.calculated.specific = specific;
+        // Get ALL matches (no suppression yet)
+        const allMatches = this.detectors.filter((detector) => detector.enabled && detector.module.detect).flatMap((detector) => detector.module.detect(this.conf, aircraft, COMMON_CATEGORIES) ?? []);
 
-            // Run anomaly detection
-            const anomalies =
-                this.anomalyDetector?.detect(aircraft, {
-                    matches: specific.matches,
-                    categories: this.categories,
-                    extra: this.extra,
-                }) ?? [];
+        // Run anomaly detection with ALL matches
+        const anomalies =
+            this.anomalyDetector?.detect(aircraft, {
+                matches: allMatches,
+                categories: this.categories,
+                extra: this.extra,
+            }) ?? [];
 
-            if (anomalies.length > 0) {
-                aircraft.calculated.specific.anomalies = anomalies.sort((a, b) => sortBySeverity(a, b, (a, b) => b.confidence - a.confidence));
-                aircraft.calculated.specific.hasAnomalies = true;
-                aircraft.calculated.specific.highestSeverity = getHighestSeverity(anomalies, 'severity');
-            }
+        // Apply suppression for final output
+        const matches = allMatches.filter((match) => !this.categoriesSuppressed?.includes(match.category));
 
-            // Set legacy flags for backward compatibility
-            if (specific.matches.some((m) => m.category === 'military')) {
+        // Build final data structure
+        if (matches.length > 0 || anomalies.length > 0) {
+            // Sort  matches by priority
+            matches.sort((a, b) => (COMMON_CATEGORIES[a.category]?.priority || 999) - (COMMON_CATEGORIES[b.category]?.priority || 999));
+            aircraft.calculated.specific = {
+                hasMatches: matches.length > 0,
+                matches: matches.length > 0 ? matches : undefined,
+                primaryMatch: matches.length > 0 ? matches[0] : undefined,
+                hasAnomalies: anomalies.length > 0,
+                anomalies: anomalies.length > 0 ? anomalies.sort((a, b) => sortBySeverity(a, b, (a, b) => b.confidence - a.confidence)) : undefined,
+                highestSeverity: anomalies.length > 0 ? getHighestSeverity(anomalies, 'severity') : undefined,
+            };
+
+            // Legacy flag
+            if (allMatches.some((m) => m.category === 'military')) {
                 aircraft.calculated.military = { isMilitary: true };
             }
         }
     },
-    evaluate: (aircraft) => aircraft.calculated.specific.isSpecific || aircraft.calculated.specific.hasAnomalies,
+    evaluate: (aircraft) => aircraft.calculated.specific.hasMatches || aircraft.calculated.specific.hasAnomalies,
     sort: (a, b) => {
-        const aCat = COMMON_CATEGORIES[a.calculated.specific.primaryMatch.category];
-        const bCat = COMMON_CATEGORIES[b.calculated.specific.primaryMatch.category];
+        const a_ = a.calculated.specific;
+        const b_ = b.calculated.specific;
 
-        // First sort by priority
-        if (aCat.priority !== bCat.priority) {
-            return aCat.priority - bCat.priority;
+        if (a_.hasMatches && b_.hasMatches) {
+            // Both have matches - sort by category priority
+            const aCat = COMMON_CATEGORIES[a_.primaryMatch.category],
+                bCat = COMMON_CATEGORIES[b_.primaryMatch.category];
+            if (aCat.priority !== bCat.priority) return aCat.priority - bCat.priority;
+            // Then by confidence
+            return (b_.primaryMatch.confidence || 1) - (a_.primaryMatch.confidence || 1);
         }
 
-        // Then by detection confidence if available
-        const aConf = a.calculated.specific.primaryMatch.confidence || 1;
-        const bConf = b.calculated.specific.primaryMatch.confidence || 1;
-        return bConf - aConf;
+        if (a_.hasAnomalies && b_.hasAnomalies) {
+            // Both have anomalies - sort by severity
+            return sortBySeverity({ severity: a_.highestSeverity }, { severity: b_.highestSeverity });
+        }
+
+        return 0;
     },
+
     getStats: (aircrafts, list) => {
         const byCategory = {};
         const byDetector = {};
         const bySource = {};
+        const byAnomalyType = {};
+        let specificCount = 0,
+            anomalyCount = 0;
 
         list.forEach((aircraft) => {
             const { specific } = aircraft.calculated;
 
-            // Category stats
-            const { category } = specific.primaryMatch;
-            byCategory[category] = (byCategory[category] || 0) + 1;
+            // Handle matches
+            if (specific.hasMatches) {
+                byCategory[specific.primaryMatch.category] = (byCategory[specific.primaryMatch.category] || 0) + 1;
+                specificCount++;
+                specific.matches.forEach((match) => {
+                    byDetector[match.detector] = (byDetector[match.detector] || 0) + 1;
+                    if (match.field) {
+                        bySource[match.field] = (bySource[match.field] || 0) + 1;
+                    }
+                });
+            }
 
-            // Detector stats
-            specific.matches.forEach((match) => {
-                byDetector[match.detector] = (byDetector[match.detector] || 0) + 1;
-
-                // Source field stats (what field matched)
-                if (match.field) {
-                    bySource[match.field] = (bySource[match.field] || 0) + 1;
-                }
-            });
+            // Handle anomalies
+            if (specific.hasAnomalies) {
+                anomalyCount++;
+                specific.anomalies.forEach((anomaly) => {
+                    byAnomalyType[anomaly.type] = (byAnomalyType[anomaly.type] || 0) + 1;
+                });
+            }
         });
 
         return {
             byCategory,
             byDetector,
             bySource,
+            byAnomalyType,
             total: list.length,
+            matchCount: specificCount,
+            anomalyCount,
+            // Breakdown of what triggered the detection
+            detectionTypes: {
+                matchesOnly: specificCount - list.filter((a) => a.calculated.specific.hasAnomalies).length,
+                anomaliesOnly: anomalyCount - specificCount,
+                both: list.filter((a) => a.calculated.specific.primaryMatch && a.calculated.specific.hasAnomalies).length,
+            },
         };
     },
     format: (aircraft) => {

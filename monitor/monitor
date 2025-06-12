@@ -120,17 +120,16 @@ const filterModules = [
     require('./filter-emergency.js'), // refactored
     require('./filter-attribute.js'), // refactored
     //
-    require('./filter-anomaly.js'),
-    require('./filter-weather.js'),
-    // require('./filter-performance.js'), // too many false positives
-    //
-    require('./filter-airprox.js'),
+    require('./filter-airprox.js'), // refactored
     require('./filter-airport.js'), // refactored
     require('./filter-landing.js'),
     require('./filter-lifting.js'),
     require('./filter-loitering.js'),
     require('./filter-vicinity.js'),
-    require('./filter-overhead.js'),
+    //
+    require('./filter-anomaly.js'),
+    require('./filter-weather.js'),
+    // require('./filter-performance.js'), // too many false positives
 ];
 
 function filterInit(config, extra) {
@@ -491,11 +490,10 @@ function alertsBuilder(config, filters, processedData, stats) {
 
 function alertMeta(format, aircraft) {
     const aircraftType = aircraft.category || '';
-    const priorityType =
-        aircraft.calculated.emergency.hasEmergency || aircraft.calculated.military.isMilitary || (aircraft.calculated.vicinity.isProximate && (aircraft.calculated.landing.isLanding || aircraft.calculated.lifting.isLifting));
+    const priorityType = aircraft.calculated.emergency.hasEmergency || aircraft.calculated.military.isMilitary || (aircraft.calculated.overhead.isVicinity && (aircraft.calculated.landing.isLanding || aircraft.calculated.lifting.isLifting)); // XXX fragile
 
     const { positionRelative: position, distance, altitude } = aircraft.calculated;
-    const positionInfo = position ? ` (${distance.toFixed(1)}km ${position.cardinal} ${tools.formatAltitude(altitude)})` : '';
+    const positionInfo = position ? ` (${distance.toFixed(1)}km ${position.cardinal}${altitude ? ' ' + tools.formatAltitude(altitude) : ''})` : '';
     const aircraftInfo = aircraftType ? ` <${tools.formatCategoryCode(aircraftType)}>` : '';
 
     const meta = {
@@ -578,7 +576,7 @@ async function systemLoop(config, system) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 function systemInit(config) {
-    const data = { location: config.location, range: config.range_max, vicinity: config.filters.vicinity.distance };
+    const data = { location: config.location, range: config.range_max, vicinity: config.filters.vicinity.vicinity.distance }; // XXX fragile
     const flights = flightsInit(config.flights);
     const airports = airportsInit(config.airports, data);
     const further = furtherInit(config.further);

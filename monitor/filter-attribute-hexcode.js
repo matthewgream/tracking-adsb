@@ -17,7 +17,7 @@ const DEFAULT_HEXCODE_PATTERNS = [
 ];
 
 // Specific individual aircraft by hexcode
-const DEFAULT_SPECIAL_HEXCODES = [
+const DEFAULT_HEXCODE_SPECIALS = [
     // Royal/VIP aircraft
     { hexcode: '400F01', category: 'royalty', description: 'Royal Air Force VIP', confidence: 1 },
     { hexcode: '3C6666', category: 'government', description: 'German Government', confidence: 1 },
@@ -158,7 +158,8 @@ function calculatePossibleHexValues(fourBits) {
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function detectHexcodePatterns(conf, aircraft, _categories) {
+// match all aircraft to something (special, patterns and watchlist)
+function detectHexcodePatterns(conf, aircraft) {
     const matches = [];
 
     if (!aircraft.hex) return matches;
@@ -166,8 +167,8 @@ function detectHexcodePatterns(conf, aircraft, _categories) {
     const hexUpper = aircraft.hex.toUpperCase();
 
     // Check specific hexcodes first (highest confidence)
-    if (conf.specialHexcodes) {
-        const special = conf.specialHexcodes.find((h) => h.hexcode === hexUpper);
+    if (conf.specials) {
+        const special = conf.specials.find((h) => h.hexcode === hexUpper);
         if (special) {
             matches.push({
                 detector: 'hexcode',
@@ -205,7 +206,7 @@ function detectHexcodePatterns(conf, aircraft, _categories) {
     }
 
     // Check custom watchlist
-    if (conf.watchlist && conf.watchlist.includes(hexUpper)) {
+    if (conf.watchlist?.includes(hexUpper)) {
         matches.push({
             detector: 'hexcode',
             field: 'hex',
@@ -230,7 +231,7 @@ function validateHexcode(hex) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function detectInvalidHexcode(aircraft, _context) {
+function detectInvalidHexcode(_conf, aircraft) {
     if (!aircraft.hex) return undefined;
 
     const hex = aircraft.hex.toUpperCase();
@@ -277,14 +278,13 @@ function detectInvalidHexcode(aircraft, _context) {
     return undefined;
 }
 
-function detectUnallocatedHexcode(aircraft, context) {
+function detectUnallocatedHexcode(conf, aircraft, context) {
     if (!aircraft.hex || !context.matches) return undefined;
 
     const hex = aircraft.hex.toUpperCase();
-    const matches = context.matches.filter((m) => m.detector === 'hexcode');
 
     // If no matches and we have patterns loaded, it might be unallocated
-    if (matches.length === 0 && this.conf && this.conf.patterns && this.conf.patterns.length > 100) {
+    if (!context.matches?.some((m) => m.detector === 'hexcode') && conf.patterns?.length > 100) {
         // Only flag as unallocated if we have a comprehensive pattern list
         return {
             type: 'hexcode-unallocated',
@@ -300,7 +300,7 @@ function detectUnallocatedHexcode(aircraft, context) {
     return undefined;
 }
 
-function detectHexcodePatternAnomaly(aircraft, context) {
+function detectHexcodePatternAnomaly(conf, aircraft, context) {
     if (!aircraft.hex) return undefined;
 
     const hex = aircraft.hex.toUpperCase();
@@ -340,7 +340,7 @@ function detectHexcodePatternAnomaly(aircraft, context) {
                 severity: 'medium',
                 confidence: 0.6,
                 description: `Civilian hexcode with military indicators`,
-                details: `Aircraft shows military characteristics but uses civilian hex range`,
+                details: `Hexcode ${hex} shows military characteristics but uses civilian hex range`,
                 field: 'hex',
                 value: hex,
             });
@@ -352,6 +352,8 @@ function detectHexcodePatternAnomaly(aircraft, context) {
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+const HEXCODE_DETECTORS = [detectInvalidHexcode, detectUnallocatedHexcode, detectHexcodePatternAnomaly];
 
 module.exports = {
     id: 'hexcode',
@@ -370,9 +372,9 @@ module.exports = {
             const prefixData = parseDAT(extra.data.loader.load(this.conf.modeSPrefixFile));
             if (prefixData) {
                 loadedPatterns = parseModeSPrefixData(prefixData);
-                text = `'${this.conf.modeSPrefixFile}' loaded ${loadedPatterns.length} entries`;
+                text = `available ('${this.conf.modeSPrefixFile}' loaded ${loadedPatterns.length} entries)`;
             } else {
-                console.error(`filter-attribute-hexcode: mode-s patterns load failure, using '${this.conf.modeSPrefixFile}'`);
+                console.error(`unavailable ('${this.conf.modeSPrefixFile}')`);
             }
         }
 
@@ -391,7 +393,7 @@ module.exports = {
         }));
 
         // Set up special hexcodes
-        this.conf.specialHexcodes = this.conf.specialHexcodes || DEFAULT_SPECIAL_HEXCODES;
+        this.conf.specials = this.conf.specials || DEFAULT_HEXCODE_SPECIALS;
 
         // Set up watchlist (array of hexcodes to watch)
         this.conf.watchlist = this.conf.watchlist || [];
@@ -407,13 +409,14 @@ module.exports = {
             })
             .map((hex) => hex.toUpperCase());
 
-        // Log some statistics
-        if (this.conf.patterns.length > 0) console.error(`filter-attribute-hexcode: configured: ${tools.formatKeyCounts(this.conf.patterns, 'category')}${text ? ' [' + text + ']' : ''}`);
+        console.error(
+            `filter-attribute-hexcode: configured: data=${text}, patterns=${this.conf.patterns.length} (${tools.formatKeyCounts(this.conf.patterns, 'category')}), specials=${this.conf.specials.length}, watchlist=${this.conf.watchlist.length}`
+        );
     },
 
-    detect: (conf, aircraft, categories) => detectHexcodePatterns(this.conf, aircraft, categories),
+    detect: (_conf, aircraft, _categories) => detectHexcodePatterns(this.conf, aircraft),
 
-    detectors: [detectInvalidHexcode, detectUnallocatedHexcode, detectHexcodePatternAnomaly],
+    getDetectors: () => HEXCODE_DETECTORS.map((detector) => (aircraft, context) => detector(this.conf, aircraft, context)),
 
     // Optional preprocessing
     preprocess: (aircraft, _context) => {

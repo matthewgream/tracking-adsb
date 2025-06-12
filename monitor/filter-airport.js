@@ -767,6 +767,7 @@ module.exports = {
             A5: 30, // Heavy aircraft longest approach
             A7: 5, // Helicopters very short
         };
+        console.error(`filter-airport: configured`); //XXX improve
     },
     preprocess: (aircraft, { aircraftData, aircraftList }) => {
         aircraft.calculated.airports_nearby = { hasAirportsNearby: false };

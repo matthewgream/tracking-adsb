@@ -8,13 +8,13 @@ const tools = require('./tools-formats.js');
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const CROSS_CHECK_DETECTORS = [
+const CROSSCHECK_DETECTORS = [
     // ===== Hexcode-Callsign Cross-checks =====
     {
         name: 'militaryHexCivilianCallsign',
         fields: ['hex', 'flight'],
         description: 'Military hex with civilian airline callsign',
-        detect: (aircraft, context) => {
+        detect: (conf, aircraft, context) => {
             if (!aircraft.hex || !aircraft.flight) return undefined;
 
             // Check if hex matches military pattern from context
@@ -41,7 +41,7 @@ const CROSS_CHECK_DETECTORS = [
         name: 'hexCountryCallsignMismatch',
         fields: ['hex', 'flight'],
         description: 'Hexcode country does not match callsign origin',
-        detect: (aircraft, context) => {
+        detect: (conf, aircraft, context) => {
             if (!aircraft.hex || !aircraft.flight) return undefined;
 
             const hexMatch = context.matches?.find((m) => m.detector === 'hexcode');
@@ -71,7 +71,7 @@ const CROSS_CHECK_DETECTORS = [
         name: 'civilianHexMilitarySquawk',
         fields: ['hex', 'squawk'],
         description: 'Civilian hex with military squawk code',
-        detect: (aircraft, context) => {
+        detect: (conf, aircraft, context) => {
             if (!aircraft.hex || !aircraft.squawk) return undefined;
 
             const hexMatch = context.matches?.find((m) => m.detector === 'hexcode' && m.category === 'civilian');
@@ -96,7 +96,7 @@ const CROSS_CHECK_DETECTORS = [
         name: 'testHexEmergencySquawk',
         fields: ['hex', 'squawk'],
         description: 'Test registration with emergency squawk',
-        detect: (aircraft, context) => {
+        detect: (conf, aircraft, context) => {
             if (!aircraft.hex || !aircraft.squawk) return undefined;
 
             const hexMatch = context.matches?.find((m) => m.detector === 'hexcode' && m.category === 'test');
@@ -122,7 +122,7 @@ const CROSS_CHECK_DETECTORS = [
         name: 'hemsCallsignWrongSquawk',
         fields: ['flight', 'squawk'],
         description: 'HEMS callsign without HEMS squawk',
-        detect: (aircraft, context) => {
+        detect: (conf, aircraft, context) => {
             if (!aircraft.flight || !aircraft.squawk) return undefined;
 
             const callsignMatch = context.matches?.find((m) => m.detector === 'callsign' && m.category === 'emergency-services' && m.description?.includes('ambulance'));
@@ -148,7 +148,7 @@ const CROSS_CHECK_DETECTORS = [
         name: 'militaryCallsignCivilianSquawk',
         fields: ['flight', 'squawk'],
         description: 'Military callsign with civilian conspicuity',
-        detect: (aircraft, context) => {
+        detect: (conf, aircraft, context) => {
             if (!aircraft.flight || !aircraft.squawk) return undefined;
 
             const militaryCallsign = context.matches?.find((m) => m.detector === 'callsign' && m.category === 'military');
@@ -175,7 +175,7 @@ const CROSS_CHECK_DETECTORS = [
         name: 'categorySpeedMismatch',
         fields: ['category', 'gs'],
         description: 'Aircraft category incompatible with ground speed',
-        detect: (aircraft, _context) => {
+        detect: (conf, aircraft, _context) => {
             if (!aircraft.category || !aircraft.gs) return undefined;
 
             // Define speed limits by category
@@ -197,7 +197,7 @@ const CROSS_CHECK_DETECTORS = [
             if (!limits) return undefined;
 
             // Only check if significantly outside limits
-            if (aircraft.gs > limits.max * 1.2) {
+            if (aircraft.gs > limits.max * 1.5) {
                 return {
                     type: 'category-overspeed',
                     severity: 'medium',
@@ -230,7 +230,7 @@ const CROSS_CHECK_DETECTORS = [
         name: 'categoryAltitudeMismatch',
         fields: ['category', 'alt_baro'],
         description: 'Aircraft category incompatible with altitude',
-        detect: (aircraft, _context) => {
+        detect: (conf, aircraft, _context) => {
             if (!aircraft.category || !aircraft.alt_baro) return undefined;
 
             // Light aircraft and ultralights shouldn't be at jet altitudes
@@ -267,7 +267,7 @@ const CROSS_CHECK_DETECTORS = [
         name: 'callsignCategoryMismatch',
         fields: ['flight', 'category'],
         description: 'Callsign type incompatible with aircraft category',
-        detect: (aircraft, _context) => {
+        detect: (conf, aircraft, _context) => {
             if (!aircraft.flight || !aircraft.category) return undefined;
 
             // Helicopter callsigns on fixed-wing
@@ -305,7 +305,7 @@ const CROSS_CHECK_DETECTORS = [
         name: 'invalidHexWithOperationalData',
         fields: ['hex', 'flight', 'squawk'],
         description: 'Invalid hex but has operational data',
-        detect: (aircraft, _context) => {
+        detect: (conf, aircraft, _context) => {
             if (!aircraft.hex) return undefined;
 
             const invalidHexPatterns = ['000000', 'FFFFFF', '123456', 'ABCDEF'];
@@ -329,35 +329,35 @@ const CROSS_CHECK_DETECTORS = [
         },
     },
 
-    {
-        name: 'hexAsCallsign',
-        fields: ['hex', 'flight'],
-        description: 'Using hexcode as callsign',
-        detect: (aircraft, _context) => {
-            if (!aircraft.hex || !aircraft.flight) return undefined;
+    // {
+    //     name: 'hexAsCallsign',
+    //     fields: ['hex', 'flight'],
+    //     description: 'Using hexcode as callsign',
+    //     detect: (conf, aircraft, _context) => {
+    //         if (!aircraft.hex || !aircraft.flight) return undefined;
 
-            // Check if callsign is just the hex in brackets
-            if (aircraft.flight === `[${aircraft.hex}]` || aircraft.flight === aircraft.hex) {
-                return {
-                    type: 'hex-as-callsign',
-                    severity: 'low',
-                    confidence: 1,
-                    description: 'No callsign assigned',
-                    details: `Using hex ${aircraft.hex} as callsign`,
-                    fields: ['hex', 'flight'],
-                    values: { hex: aircraft.hex, flight: aircraft.flight },
-                };
-            }
-            return undefined;
-        },
-    },
+    //         // Check if callsign is just the hex in brackets
+    //         if (aircraft.flight === `[${aircraft.hex}]` || aircraft.flight === aircraft.hex) {
+    //             return {
+    //                 type: 'hex-as-callsign',
+    //                 severity: 'low',
+    //                 confidence: 1,
+    //                 description: 'No callsign assigned',
+    //                 details: `Using hex ${aircraft.hex} as callsign`,
+    //                 fields: ['hex', 'flight'],
+    //                 values: { hex: aircraft.hex, flight: aircraft.flight },
+    //             };
+    //         }
+    //         return undefined;
+    //     },
+    // },
 
     // ===== Emergency Status Cross-checks =====
     {
         name: 'emergencySquawkNormalOps',
         fields: ['squawk', 'baro_rate', 'track'],
         description: 'Emergency squawk but normal operations',
-        detect: (aircraft, _context) => {
+        detect: (conf, aircraft, _context) => {
             if (!aircraft.squawk) return undefined;
 
             const emergencySquawks = ['7500', '7600', '7700'];
@@ -388,7 +388,7 @@ const CROSS_CHECK_DETECTORS = [
 function getFieldUsageStats() {
     const fieldUsage = {};
 
-    CROSS_CHECK_DETECTORS.forEach((detector) => {
+    CROSSCHECK_DETECTORS.forEach((detector) => {
         detector.fields.forEach((field) => {
             if (!fieldUsage[field]) {
                 fieldUsage[field] = {
@@ -417,17 +417,15 @@ module.exports = {
         this.categories = categories;
 
         // Store detector configuration
-        this.detectors = CROSS_CHECK_DETECTORS;
+        this.detectors = CROSSCHECK_DETECTORS;
 
         // Log configuration
-        const fieldSummary = Object.entries(getFieldUsageStats())
-            .map(([field, stats]) => `${field}=${stats.count}`)
-            .join(', ');
+        const fieldSummary = Object.entries(getFieldUsageStats()).map(([field, stats]) => `${field}=${stats.count}`);
 
-        console.error(`filter-attribute-crosscheck: configured: fields ${fieldSummary}`);
+        console.error(`filter-attribute-crosscheck: configured: fields=${fieldSummary.length} (${fieldSummary.join(', ')})`);
     },
 
-    detectors: CROSS_CHECK_DETECTORS.map((d) => d.detect),
+    getDetectors: () => CROSSCHECK_DETECTORS.map((detector) => (aircraft, context) => detector.detect(this.conf, aircraft, context)),
 };
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------

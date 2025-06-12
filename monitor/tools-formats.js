@@ -37,7 +37,7 @@ function formatAltitude(altitude) {
     // Standard transition level in the UK is generally FL70 (7,000 ft)
     // London TMA uses varying transition altitudes, but 6,000 ft is common
     const transitionLevel = 7000;
-    if (altitude === undefined) return 'n/a';
+    if (altitude === undefined) return '';
     if (altitude >= transitionLevel) return `FL${Math.round(altitude / 100)}`;
     if (altitude === 0) return 'ground';
     return `${altitude.toLocaleString()} ft`;

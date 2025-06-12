@@ -1,9 +1,265 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+const RELIABILITY_THRESHOLDS = {
+    position: {
+        maxAge: 30, // seconds
+        maxUncertainty: 10, // NM
+    },
+    altitude: {
+        maxAge: 30, // seconds
+        maxDiscrepancy: 500, // feet between baro and geom
+        minReports: 3, // minimum reports for reliability
+    },
+    velocity: {
+        maxAge: 30, // seconds
+        maxAcceleration: 5, // G's - physics limit
+    },
+};
+
+/**
+ * Check reliability of a specific aircraft data field
+ * @param {Object} aircraft - Aircraft object
+ * @param {string} field - Field to check ('position', 'altitude', 'velocity')
+ * @param {Object} options - Optional custom thresholds
+ * @returns {Object} Reliability assessment
+ */
+function isReliable(aircraft, field, options = {}) {
+    const thresholds = { ...RELIABILITY_THRESHOLDS[field], ...options };
+
+    switch (field) {
+        case 'position':
+            return checkPositionReliability(aircraft, thresholds);
+
+        case 'altitude':
+            return checkAltitudeReliability(aircraft, thresholds);
+
+        case 'velocity':
+            return checkVelocityReliability(aircraft, thresholds);
+
+        default:
+            return { reliable: false, reason: 'unknown field type' };
+    }
+}
+
+function checkPositionReliability(aircraft, thresholds) {
+    const issues = [];
+
+    // Check position age
+    if (aircraft.seen_pos !== undefined && aircraft.seen_pos > thresholds.maxAge) {
+        issues.push({ type: 'stale', age: aircraft.seen_pos });
+    }
+
+    // Check if position exists
+    if (aircraft.lat === undefined || aircraft.lon === undefined) {
+        issues.push({ type: 'missing' });
+    }
+
+    // Check position validity
+    if (aircraft.lat !== undefined && (aircraft.lat < -90 || aircraft.lat > 90)) {
+        issues.push({ type: 'invalid_latitude', value: aircraft.lat });
+    }
+
+    if (aircraft.lon !== undefined && (aircraft.lon < -180 || aircraft.lon > 180)) {
+        issues.push({ type: 'invalid_longitude', value: aircraft.lon });
+    }
+
+    // Check NIC/NAC if available (ADS-B position quality indicators)
+    if (aircraft.nic !== undefined && aircraft.nic < 6) {
+        issues.push({ type: 'low_integrity', nic: aircraft.nic });
+    }
+
+    return {
+        reliable: issues.length === 0,
+        confidence: issues.length === 0 ? 1 : Math.max(0, 1 - issues.length * 0.3),
+        issues,
+        field: 'position',
+    };
+}
+
+function checkAltitudeReliability(aircraft, thresholds) {
+    const issues = [];
+
+    // Check if we have altitude data
+    if (!aircraft.alt_baro && !aircraft.alt_geom) {
+        issues.push({ type: 'missing' });
+        return { reliable: false, confidence: 0, issues, field: 'altitude' };
+    }
+
+    // Check discrepancy between barometric and geometric altitude
+    if (aircraft.alt_baro !== undefined && aircraft.alt_geom !== undefined) {
+        const discrepancy = Math.abs(aircraft.alt_baro - aircraft.alt_geom);
+        if (discrepancy > thresholds.maxDiscrepancy) {
+            issues.push({
+                type: 'discrepancy',
+                baro: aircraft.alt_baro,
+                geom: aircraft.alt_geom,
+                diff: discrepancy,
+            });
+        }
+    }
+
+    // Check for impossible altitudes
+    const altitude = aircraft.alt_baro || aircraft.alt_geom;
+    if (altitude < -1000 || altitude > 60000) {
+        issues.push({ type: 'impossible', value: altitude });
+    }
+
+    // Check altitude source
+    if (!aircraft.alt_baro && aircraft.alt_geom) {
+        issues.push({ type: 'geometric_only' });
+    }
+
+    return {
+        reliable: issues.length === 0,
+        confidence: calculateConfidence(issues),
+        issues,
+        field: 'altitude',
+        source: aircraft.alt_baro ? 'barometric' : 'geometric',
+    };
+}
+
+function checkVelocityReliability(aircraft, _thresholds) {
+    const issues = [];
+
+    // Check if we have velocity data
+    if (aircraft.gs === undefined || aircraft.track === undefined) {
+        issues.push({ type: 'missing' });
+        return { reliable: false, confidence: 0, issues, field: 'velocity' };
+    }
+
+    // Check for impossible speeds
+    if (aircraft.gs < 0 || aircraft.gs > 2000) {
+        issues.push({ type: 'impossible_speed', value: aircraft.gs });
+    }
+
+    // Check track validity
+    if (aircraft.track < 0 || aircraft.track > 360) {
+        issues.push({ type: 'invalid_track', value: aircraft.track });
+    }
+
+    // Check for impossible accelerations if we have history
+    if (aircraft.track_rate !== undefined && Math.abs(aircraft.track_rate) > 30) {
+        issues.push({ type: 'excessive_turn_rate', value: aircraft.track_rate });
+    }
+
+    return {
+        reliable: issues.length === 0,
+        confidence: calculateConfidence(issues),
+        issues,
+        field: 'velocity',
+    };
+}
+
+function calculateConfidence(issues) {
+    if (issues.length === 0) return 1;
+
+    // Weight different issue types
+    const weights = {
+        missing: 0,
+        stale: 0.5,
+        discrepancy: 0.6,
+        geometric_only: 0.8,
+        low_integrity: 0.7,
+        impossible: 0.1,
+        invalid: 0.1,
+    };
+
+    let totalWeight = 0;
+    issues.forEach((issue) => {
+        const weight = weights[issue.type] || 0.5;
+        totalWeight += 1 - weight;
+    });
+
+    return Math.max(0, 1 - totalWeight / issues.length);
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Check reliability of data over a time period using historical data
+ * @param {Array} dataPoints - Array of historical data points
+ * @param {string} field - Field to analyze
+ * @param {Object} options - Analysis options
+ * @returns {Object} Reliability assessment over time
+ */
+function checkReliabilityOverTime(dataPoints, field, options = {}) {
+    if (!dataPoints || dataPoints.length === 0) {
+        return { reliable: false, reason: 'no data', confidence: 0 };
+    }
+
+    const results = dataPoints.map((point) => isReliable(point, field, options));
+    const reliableCount = results.filter((r) => r.reliable).length;
+    const avgConfidence = results.reduce((sum, r) => sum + r.confidence, 0) / results.length;
+
+    // Look for consistency patterns
+    const consistencyScore = calculateConsistency(dataPoints, field);
+
+    return {
+        reliable: reliableCount / dataPoints.length > 0.8,
+        confidence: avgConfidence,
+        reliableCount,
+        totalCount: dataPoints.length,
+        reliabilityRate: reliableCount / dataPoints.length,
+        consistency: consistencyScore,
+        details: results,
+    };
+}
+
+function calculateConsistency(dataPoints, field) {
+    if (dataPoints.length < 2) return 1;
+
+    let consistencyScore = 1;
+
+    switch (field) {
+        case 'position':
+            // Check for jumps in position
+            for (let i = 1; i < dataPoints.length; i++) {
+                const prev = dataPoints[i - 1];
+                const curr = dataPoints[i];
+                if (prev.lat && prev.lon && curr.lat && curr.lon) {
+                    // Simple distance check - could use actual distance calculation
+                    const latDiff = Math.abs(curr.lat - prev.lat);
+                    const lonDiff = Math.abs(curr.lon - prev.lon);
+                    if (latDiff > 0.1 || lonDiff > 0.1) {
+                        // ~6-11km jump
+                        consistencyScore *= 0.8;
+                    }
+                }
+            }
+            break;
+
+        case 'altitude':
+            // Check for unrealistic altitude changes
+            for (let i = 1; i < dataPoints.length; i++) {
+                const prev = dataPoints[i - 1];
+                const curr = dataPoints[i];
+                const prevAlt = prev.alt_baro || prev.alt_geom;
+                const currAlt = curr.alt_baro || curr.alt_geom;
+                if (prevAlt !== undefined && currAlt !== undefined) {
+                    const altChange = Math.abs(currAlt - prevAlt);
+                    const timeElapsed = (curr.seen || curr.now) - (prev.seen || prev.now);
+                    const ratePerMin = (altChange / timeElapsed) * 60;
+                    if (ratePerMin > 6000) {
+                        // >6000 fpm is suspicious
+                        consistencyScore *= 0.7;
+                    }
+                }
+            }
+            break;
+    }
+
+    return Math.max(0, consistencyScore);
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 class AircraftData {
     constructor(aircraft, options = {}) {
         this.aircraft = aircraft;
+        this.history = [];
         this.trajectoryData = aircraft.calculated?.trajectoryData || [];
         this.currentTimestamp = options.currentTimestamp || Date.now();
         this._cache = new Map();
@@ -341,12 +597,86 @@ class AircraftData {
 
         return current;
     }
+
+    checkReliability(field, options = {}) {
+        return isReliable(this.aircraft, field, options);
+    }
+
+    checkReliabilityOverTime(field, options = {}) {
+        // Include current aircraft data with history
+        const dataPoints = [...this.history, this.aircraft];
+        return checkReliabilityOverTime(dataPoints, field, options);
+    }
+
+    getDataQuality() {
+        const positionQuality = this.checkReliability('position');
+        const altitudeQuality = this.checkReliability('altitude');
+        const velocityQuality = this.checkReliability('velocity');
+
+        const overallConfidence = (positionQuality.confidence + altitudeQuality.confidence + velocityQuality.confidence) / 3;
+
+        return {
+            overall: overallConfidence,
+            position: positionQuality,
+            altitude: altitudeQuality,
+            velocity: velocityQuality,
+            isReliable: overallConfidence > 0.7,
+            issues: [...positionQuality.issues, ...altitudeQuality.issues, ...velocityQuality.issues],
+        };
+    }
+
+    checkConsistency(timeWindow = 60) {
+        const recentHistory = this.history.filter((point) => {
+            const age = (this.aircraft.now || Date.now() / 1000) - (point.now || point.seen);
+            return age <= timeWindow;
+        });
+
+        const results = {
+            position: checkReliabilityOverTime(recentHistory, 'position'),
+            altitude: checkReliabilityOverTime(recentHistory, 'altitude'),
+            velocity: checkReliabilityOverTime(recentHistory, 'velocity'),
+        };
+
+        return {
+            timeWindow,
+            sampleCount: recentHistory.length,
+            position: results.position,
+            altitude: results.altitude,
+            velocity: results.velocity,
+            overallConsistency: (results.position.consistency + results.altitude.consistency + results.velocity.consistency) / 3,
+        };
+    }
+
+    getReliabilityTrend(field) {
+        return this.history.map((point, index) => {
+            const reliability = isReliable(point, field);
+            return {
+                timestamp: point.now || point.seen,
+                index,
+                confidence: reliability.confidence,
+                reliable: reliability.reliable,
+                issues: reliability.issues.length,
+            };
+        });
+    }
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-module.exports.AircraftData = AircraftData;
+module.exports = {
+    AircraftData,
+
+    // Data reliability
+    isReliable,
+    checkReliabilityOverTime,
+    RELIABILITY_THRESHOLDS,
+
+    // For testing
+    checkPositionReliability,
+    checkAltitudeReliability,
+    checkVelocityReliability,
+};
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------

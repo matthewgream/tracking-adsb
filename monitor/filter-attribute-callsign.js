@@ -7,7 +7,6 @@ const tools = require('./tools-formats.js');
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-// Military prefixes moved from the old military filter
 const DEFAULT_MILITARY_PREFIXES = [
     'RCH',
     'PLF',
@@ -67,7 +66,6 @@ const DEFAULT_MILITARY_PREFIXES = [
     'QID',
 ];
 
-// Default callsign patterns
 const DEFAULT_PATTERNS = [
     // Royalty
     { pattern: '^(TKF)[0-9]', category: 'royalty', description: "The King's Flight" },
@@ -79,6 +77,10 @@ const DEFAULT_PATTERNS = [
     { pattern: '^RRF', category: 'government', description: 'French Republic flight' },
     { pattern: '^IAF', category: 'government', description: 'Italian Air Force' },
     { pattern: '^SAF', category: 'government', description: 'Swedish Air Force' },
+
+    // Military
+    { prefixes: DEFAULT_MILITARY_PREFIXES, category: 'military', description: 'Military (Prefix)', confidence: 0.9 },
+    { pattern: '^[A-Z]{4}[0-9]{2}$', category: 'military', description: 'Military (ICAO pattern)', confidence: 0.8 },
 
     // Special operators
     { pattern: '^(CKS|CPT)', category: 'special-ops', description: 'Special operations' },
@@ -106,13 +108,14 @@ const DEFAULT_PATTERNS = [
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function detectCallsignPatterns(conf, aircraft, _categories) {
+function detectCallsignPatterns(conf, aircraft) {
     const matches = [];
 
-    // Check configured patterns
-    if (aircraft.flight && conf.patterns) {
-        for (const pattern of conf.patterns) {
-            if (pattern.regex.test(aircraft.flight)) {
+    if (!aircraft.flight || !conf.patterns) return matches;
+
+    for (const pattern of conf.patterns) {
+        if (pattern.regex)
+            if (pattern.regex.test(aircraft.flight))
                 matches.push({
                     detector: 'callsign',
                     field: 'flight',
@@ -122,40 +125,19 @@ function detectCallsignPatterns(conf, aircraft, _categories) {
                     confidence: pattern.confidence || 1,
                     value: aircraft.flight,
                 });
-            }
-        }
-    }
 
-    // Check military prefixes
-    if (aircraft.flight && conf.militaryPrefixes) {
-        const flight = aircraft.flight.trim();
-        for (const prefix of conf.militaryPrefixes) {
-            if (flight.startsWith(prefix)) {
-                matches.push({
-                    detector: 'callsign',
-                    field: 'flight',
-                    pattern: `^${prefix}`,
-                    category: 'military',
-                    description: `Military aircraft (${prefix} prefix)`,
-                    confidence: 0.9,
-                    value: aircraft.flight,
-                });
-                break; // Only match first prefix
-            }
-        }
-    }
-
-    // Check military pattern (4 letters + 2 digits)
-    if (aircraft.flight && /^[A-Z]{4}\d{2}$/.test(aircraft.flight)) {
-        matches.push({
-            detector: 'callsign',
-            field: 'flight',
-            pattern: '^[A-Z]{4}\\d{2}$',
-            category: 'military',
-            description: 'Military aircraft (ICAO pattern)',
-            confidence: 0.8,
-            value: aircraft.flight,
-        });
+        if (pattern.prefixes)
+            for (const prefix of pattern.prefixes)
+                if (aircraft.flight.startsWith(prefix))
+                    matches.push({
+                        detector: 'callsign',
+                        field: 'flight',
+                        pattern: `^${prefix}`,
+                        category: pattern.category,
+                        description: pattern.description,
+                        confidence: pattern.confidence || 1,
+                        value: aircraft.flight,
+                    });
     }
 
     return matches;
@@ -164,10 +146,10 @@ function detectCallsignPatterns(conf, aircraft, _categories) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-function detectMalformedCallsign(aircraft, _context) {
+function detectMalformedCallsign(conf, aircraft) {
     if (!aircraft.flight) return undefined;
 
-    const flight = { aircraft };
+    const { flight } = aircraft;
 
     // Check for empty or too short
     if (flight.length < 2) {
@@ -182,8 +164,9 @@ function detectMalformedCallsign(aircraft, _context) {
         };
     }
 
-    // Check for invalid characters
-    if (!/^[\da-z-]+$/i.test(flight)) {
+    // Check for invalid characters (Skip synthetic additions like [c07b42], [4d227d])
+    // eslint-disable-next-line unicorn/better-regex
+    if (!/^\[[\da-f]+\]$/i.test(flight) && !/^[\da-z-]+$/i.test(flight)) {
         return {
             type: 'callsign-invalid-chars',
             severity: 'medium',
@@ -198,7 +181,7 @@ function detectMalformedCallsign(aircraft, _context) {
     return undefined;
 }
 
-function detectCallsignFormatAnomaly(aircraft, _context) {
+function detectCallsignFormatAnomaly(conf, aircraft) {
     if (!aircraft.flight || aircraft.flight.length < 3) return undefined;
 
     const flight = aircraft.flight.toUpperCase();
@@ -246,14 +229,14 @@ function detectCallsignFormatAnomaly(aircraft, _context) {
     return anomalies.length > 0 ? anomalies : undefined;
 }
 
-function detectCallsignPatternMismatch(aircraft, context) {
+function detectCallsignPatternMismatch(conf, aircraft, context) {
     if (!aircraft.flight || !context.matches) return undefined;
 
     const flight = aircraft.flight.toUpperCase();
     const matches = context.matches.filter((m) => m.detector === 'callsign');
 
     // Check if military callsign format but didn't match any military pattern
-    if (/^[A-Z]{3,4}\d{2,4}$/.test(flight) && !matches.some((m) => m.category === 'military')) {
+    if (/^[A-Z]{4}\d{2}$/.test(flight) && !matches.some((m) => m.category === 'military')) {
         // Looks like military format but didn't match known prefixes
         return {
             type: 'callsign-unknown-military-format',
@@ -272,6 +255,8 @@ function detectCallsignPatternMismatch(aircraft, context) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+const CALLSIGN_DETECTORS = [detectMalformedCallsign, detectCallsignFormatAnomaly, detectCallsignPatternMismatch];
+
 module.exports = {
     id: 'callsign',
     name: 'Callsign pattern detection',
@@ -281,22 +266,17 @@ module.exports = {
         this.extra = extra;
         this.categories = categories;
 
-        // Set up military prefixes
-        this.conf.militaryPrefixes = this.conf.militaryPrefixes || DEFAULT_MILITARY_PREFIXES;
-
-        // Set up patterns
-        const patterns = this.conf.patterns || DEFAULT_PATTERNS;
-        this.conf.patterns = patterns.map((p) => ({
+        this.conf.patterns = (this.conf.patterns || DEFAULT_PATTERNS).map((p) => ({
             ...p,
-            regex: new RegExp(p.pattern, 'i'),
+            regex: p.pattern ? new RegExp(p.pattern, 'i') : undefined,
         }));
 
-        if (this.conf.patterns.length > 0) console.error(`filter-attribute-callsign: configured: ${tools.formatKeyCounts(this.conf.patterns, 'category')}`);
+        console.error(`filter-attribute-callsign: configured: patterns=${this.conf.patterns.length} (${tools.formatKeyCounts(this.conf.patterns, 'category')})`);
     },
 
-    detect: (conf, aircraft, categories) => detectCallsignPatterns(this.conf, aircraft, categories),
+    detect: (_conf, aircraft, _categories) => detectCallsignPatterns(this.conf, aircraft),
 
-    detectors: [detectMalformedCallsign, detectCallsignFormatAnomaly, detectCallsignPatternMismatch],
+    getDetectors: () => CALLSIGN_DETECTORS.map((detector) => (aircraft, context) => detector(this.conf, aircraft, context)),
 
     // Optional preprocessing if needed for this detector
     preprocess: (aircraft, _context) => {
