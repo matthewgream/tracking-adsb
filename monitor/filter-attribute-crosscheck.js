@@ -1,11 +1,31 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Cross-field anomaly detection module for filter-attribute
-// Detects anomalies that require checking multiple aircraft fields
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const tools = require('./tools-formats.js');
+const tools = { ...require('./tools-formats.js'), ...require('./tools-geometry.js') };
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+const MILITARY_AIRPORT_PATTERNS = {
+    name: [
+        /\bRAF\b/i, // Royal Air Force
+        /\bAFB\b/i, // Air Force Base
+        /\bNAS\b/i, // Naval Air Station
+        /\bMCAS\b/i, // Marine Corps Air Station
+        /\bAAF\b/i, // Army Air Field
+        /\bCFB\b/i, // Canadian Forces Base
+        /Base Aérienne/i, // French
+        /Fliegerhorst/i, // German
+    ],
+};
+
+function isNearMilitaryAirport(aircraft, airports, distance = tools.nmToKm(5).value) {
+    if (aircraft.lat === undefined || aircraft.lon === undefined) return false;
+    const nearby = airports?.findNearby(aircraft.lat, aircraft.lon, { distance });
+    return nearby?.some((airport) => MILITARY_AIRPORT_PATTERNS.name.some((pattern) => pattern.test(airport.name)));
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const CROSSCHECK_DETECTORS = [
@@ -77,7 +97,8 @@ const CROSSCHECK_DETECTORS = [
             const hexMatch = context.matches?.find((m) => m.detector === 'hexcode' && m.category === 'civilian');
             const squawkMatch = context.matches?.find((m) => m.detector === 'squawk' && m.category === 'military');
 
-            if (hexMatch && squawkMatch) {
+            if (hexMatch && squawkMatch && !isNearMilitaryAirport(aircraft, context.extra.data.airports)) {
+                // XXX radius
                 return {
                     type: 'civilian-hex-military-squawk',
                     severity: 'medium',

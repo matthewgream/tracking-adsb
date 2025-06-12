@@ -80,7 +80,8 @@ const DEFAULT_PATTERNS = [
 
     // Military
     { prefixes: DEFAULT_MILITARY_PREFIXES, category: 'military', description: 'Military (Prefix)', confidence: 0.9 },
-    { pattern: '^[A-Z]{4}[0-9]{2}$', category: 'military', description: 'Military (ICAO pattern)', confidence: 0.8 },
+    { pattern: '^[A-Z]{4}[0-9]{2}$', category: 'military', description: 'Military (4-letter ICAO)', confidence: 0.8 },
+    { pattern: '^[A-Z]{5}[0-9]{2}$', category: 'military', description: 'Military (5-letter tactical)', confidence: 0.9 },
 
     // Special operators
     { pattern: '^(CKS|CPT)', category: 'special-ops', description: 'Special operations' },
