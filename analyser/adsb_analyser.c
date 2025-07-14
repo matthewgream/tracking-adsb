@@ -88,7 +88,7 @@ typedef struct {
     unsigned long messages_position;
     unsigned long position_valid;
     unsigned long position_invalid;
-    unsigned long publishes_mqtt;
+    unsigned long published_mqtt;
     double distance_max;
     char distance_max_icao[7];
     double altitude_max;
@@ -310,7 +310,7 @@ void aircraft_publish_mqtt(void) {
     if (updates > 0) {
         const int rc = mosquitto_publish(g_mosq, NULL, g_config.mqtt_topic, (int)strlen(json_buffer), json_buffer, 0, false);
         if (rc == MOSQ_ERR_SUCCESS) {
-            g_stats.publishes_mqtt += updates;
+            g_stats.published_mqtt += updates;
             for (int i = 0; i < MAX_AIRCRAFT; i++) // locking not needed
                 if (published[i] > 0)
                     g_aircraft_map.entries[i].published = now;
@@ -488,10 +488,10 @@ void mqtt_end(void) {
 // ---------------------------------------------------------------------------------------------------------------------
 
 void print_status(void) {
-    printf("status: messages=%lu, positions=%lu (valid=%lu, invalid=%lu), aircraft=%d, published=%lu, distance-max=%.1fnm (%s), altitude-max=%.0fft (%s), "
-           "mqtt-updates=%lu\n",
-           g_stats.messages_total, g_stats.messages_position, g_stats.position_valid, g_stats.position_invalid, g_aircraft_map.count, g_stats.publishes_mqtt,
-           g_stats.distance_max, g_stats.distance_max_icao, g_stats.altitude_max, g_stats.altitude_max_icao, g_stats.publishes_mqtt);
+    printf(
+        "status: messages=%lu, positions=%lu (valid=%lu, invalid=%lu), aircraft=%d, distance-max=%.1fnm (%s), altitude-max=%.0fft (%s), published-mqtt=%lu\n",
+        g_stats.messages_total, g_stats.messages_position, g_stats.position_valid, g_stats.position_invalid, g_aircraft_map.count, g_stats.distance_max,
+        g_stats.distance_max_icao, g_stats.altitude_max, g_stats.altitude_max_icao, g_stats.published_mqtt);
     fflush(stdout);
 }
 
