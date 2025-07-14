@@ -68,6 +68,14 @@ typedef struct {
 // ---------------------------------------------------------------------------------------------------------------------
 
 typedef struct {
+    double lat;
+    double lon;
+    int altitude_ft;
+    double distance_nm;
+    time_t timestamp;
+} aircraft_posn_t;
+
+typedef struct {
     char icao[7];
     double lat;
     double lon;
@@ -76,6 +84,8 @@ typedef struct {
     time_t timestamp;
     time_t last_seen;
     time_t published;
+    aircraft_posn_t min_lat_pos, max_lat_pos, min_lon_pos, max_lon_pos, min_alt_pos, max_alt_pos, min_dist_pos, max_dist_pos;
+    bool bounds_initialised;
 } aircraft_data_t;
 
 typedef struct {
@@ -178,6 +188,221 @@ unsigned int hash_icao(const char *const icao) {
 // ---------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------
 
+#define VOXEL_SIZE_HORIZONTAL_KM 1.0
+#define VOXEL_SIZE_VERTICAL_FT 1000.0
+#define VOXEL_SIZE_VERTICAL_KM (VOXEL_SIZE_VERTICAL_FT * 0.0003048)
+#define VOXEL_MAX_COUNT 255
+#define VOXEL_FILE_PATH "adsb_voxel_map.dat"
+#define VOXEL_SAVE_INTERVAL 1800    // 30 minutes
+#define VOXEL_FILE_MAGIC 0x56585041 // "VXPA" in hex
+#define VOXEL_FILE_VERSION 1
+
+typedef struct {
+    unsigned char *data;
+    int size_x, size_y, size_z;
+    size_t total_voxels;
+    double origin_lat, origin_lon;
+    double max_radius_km, max_altitude_km;
+    time_t last_save;
+} voxel_map_t;
+
+voxel_map_t g_voxel_map = { 0 };
+pthread_t g_voxel_thread;
+
+int constrain_int(const int v, const int v_min, const int v_max) {
+    return v < v_min ? v_min : (v > v_max ? v_max : v);
+}
+
+void voxel_coords_to_indices(const double lat, const double lon, const double altitude_ft, int *const x, int *const y, int *const z) {
+    const double distance_km = calculate_distance_nm(g_config.position_lat, g_config.position_lon, lat, lon) * 1.852;
+    const double lat1_rad = g_config.position_lat * M_PI / 180.0, lat2_rad = lat * M_PI / 180.0, dlon_rad = (lon - g_config.position_lon) * M_PI / 180.0;
+    const double bearing = atan2(sin(dlon_rad) * cos(lat2_rad), cos(lat1_rad) * sin(lat2_rad) - sin(lat1_rad) * cos(lat2_rad) * cos(dlon_rad));
+    const double dx_km = distance_km * sin(bearing), dy_km = distance_km * cos(bearing);
+    *x = constrain_int((int)((dx_km / VOXEL_SIZE_HORIZONTAL_KM) + (g_voxel_map.size_x / 2)), 0, g_voxel_map.size_x - 1);
+    *y = constrain_int((int)((dy_km / VOXEL_SIZE_HORIZONTAL_KM) + (g_voxel_map.size_y / 2)), 0, g_voxel_map.size_y - 1);
+    *z = constrain_int((int)((altitude_ft / VOXEL_SIZE_VERTICAL_FT)), 0, g_voxel_map.size_z - 1);
+}
+
+size_t voxel_indices_to_index(const int x, const int y, const int z) {
+    return (size_t)z * (size_t)g_voxel_map.size_x * (size_t)g_voxel_map.size_y + (size_t)y * (size_t)g_voxel_map.size_x + (size_t)x;
+}
+
+void voxel_map_update(const double lat, const double lon, const int altitude_ft) {
+    if (!g_voxel_map.data)
+        return;
+
+    int x, y, z;
+    voxel_coords_to_indices(lat, lon, (double)altitude_ft, &x, &y, &z);
+    const size_t idx = voxel_indices_to_index(x, y, z);
+    if (g_voxel_map.data[idx] < VOXEL_MAX_COUNT) {
+        g_voxel_map.data[idx]++;
+        if (g_config.debug && g_voxel_map.data[idx] == 1)
+            printf("debug: voxel: created [%d,%d,%d] (%.1fkm, %.1fkm, %.0fft)\n", x, y, z, (x - g_voxel_map.size_x / 2) * VOXEL_SIZE_HORIZONTAL_KM,
+                   (y - g_voxel_map.size_y / 2) * VOXEL_SIZE_HORIZONTAL_KM, z * VOXEL_SIZE_VERTICAL_FT);
+    }
+}
+
+bool voxel_map_save(void) {
+    if (!g_voxel_map.data)
+        return false;
+
+    FILE *fp = fopen(VOXEL_FILE_PATH, "wb");
+    if (!fp) {
+        printf("voxel: map open file for write failed: %s\n", VOXEL_FILE_PATH);
+        return false;
+    }
+
+    const unsigned int magic = VOXEL_FILE_MAGIC, version = VOXEL_FILE_VERSION;
+    fwrite(&magic, sizeof(magic), 1, fp);
+    fwrite(&version, sizeof(version), 1, fp);
+    fwrite(&g_voxel_map.size_x, sizeof(g_voxel_map.size_x), 1, fp);
+    fwrite(&g_voxel_map.size_y, sizeof(g_voxel_map.size_y), 1, fp);
+    fwrite(&g_voxel_map.size_z, sizeof(g_voxel_map.size_z), 1, fp);
+    fwrite(&g_voxel_map.origin_lat, sizeof(g_voxel_map.origin_lat), 1, fp);
+    fwrite(&g_voxel_map.origin_lon, sizeof(g_voxel_map.origin_lon), 1, fp);
+    fwrite(&g_voxel_map.max_radius_km, sizeof(g_voxel_map.max_radius_km), 1, fp);
+    fwrite(&g_voxel_map.max_altitude_km, sizeof(g_voxel_map.max_altitude_km), 1, fp);
+    size_t written = fwrite(g_voxel_map.data, sizeof(unsigned char), g_voxel_map.total_voxels, fp);
+
+    fclose(fp);
+    if (written != g_voxel_map.total_voxels) {
+        printf("voxel: map write file failed (wrote %zu of %zu voxels): %s\n", written, g_voxel_map.total_voxels, VOXEL_FILE_PATH);
+        return false;
+    }
+    size_t occupied = 0;
+    for (size_t i = 0; i < g_voxel_map.total_voxels; i++)
+        if (g_voxel_map.data[i] > 0)
+            occupied++;
+
+    printf("voxel: map save file to %s (%.1f MB, %.1f%% occupied)\n", VOXEL_FILE_PATH, (double)g_voxel_map.total_voxels / (double)(1024 * 1024),
+           (double)(occupied * 100) / (double)g_voxel_map.total_voxels);
+    return true;
+}
+
+bool voxel_map_load(void) {
+    if (!g_voxel_map.data)
+        return false;
+
+    FILE *fp = fopen(VOXEL_FILE_PATH, "rb");
+    if (!fp) {
+        if (errno != ENOENT)
+            printf("voxel: map open file for read failed: %s\n", VOXEL_FILE_PATH);
+        return false;
+    }
+
+    unsigned int magic, version;
+    int size_x, size_y, size_z;
+    double origin_lat, origin_lon, max_radius_km, max_altitude_km;
+    if (fread(&magic, sizeof(magic), 1, fp) != 1 || magic != VOXEL_FILE_MAGIC) {
+        printf("voxel: map read file has invalid magic\n");
+        fclose(fp);
+        return false;
+    }
+    fread(&version, sizeof(version), 1, fp);
+    if (version != VOXEL_FILE_VERSION) {
+        printf("voxel: map read file has unspported version %u\n", version);
+        fclose(fp);
+        return false;
+    }
+    fread(&size_x, sizeof(size_x), 1, fp);
+    fread(&size_y, sizeof(size_y), 1, fp);
+    fread(&size_z, sizeof(size_z), 1, fp);
+    fread(&origin_lat, sizeof(origin_lat), 1, fp);
+    fread(&origin_lon, sizeof(origin_lon), 1, fp);
+    fread(&max_radius_km, sizeof(max_radius_km), 1, fp);
+    fread(&max_altitude_km, sizeof(max_altitude_km), 1, fp);
+    if (size_x != g_voxel_map.size_x || size_y != g_voxel_map.size_y || size_z != g_voxel_map.size_z || fabs(origin_lat - g_voxel_map.origin_lat) > 0.0001 ||
+        fabs(origin_lon - g_voxel_map.origin_lon) > 0.0001) {
+        printf("voxel: map read file has mismatched dimensions or origin\n");
+        fclose(fp);
+        return false;
+    }
+    const size_t read = fread(g_voxel_map.data, sizeof(unsigned char), g_voxel_map.total_voxels, fp);
+
+    fclose(fp);
+
+    if (read != g_voxel_map.total_voxels) {
+        printf("voxel: map read file failed (read %zu of %zu voxels): %s\n", read, g_voxel_map.total_voxels, VOXEL_FILE_PATH);
+        return false;
+    }
+
+    size_t occupied = 0;
+    for (size_t i = 0; i < g_voxel_map.total_voxels; i++)
+        if (g_voxel_map.data[i] > 0)
+            occupied++;
+
+    printf("voxel: map load file from %s (%.1f MB, %.1f%% occupied)\n", VOXEL_FILE_PATH, (double)g_voxel_map.total_voxels / (double)(1024 * 1024),
+           (double)(occupied * 100) / (double)g_voxel_map.total_voxels);
+    return true;
+}
+
+void *voxel_save_thread(void *arg __attribute__((unused))) {
+    printf("voxel: map save file thread started\n");
+    while (g_running) {
+        sleep(1);
+        const time_t now = time(NULL);
+        if (now - g_voxel_map.last_save >= VOXEL_SAVE_INTERVAL) {
+            voxel_map_save();
+            g_voxel_map.last_save = now;
+        }
+    }
+    voxel_map_save();
+    printf("voxel: map save file thread stopped\n");
+    return NULL;
+}
+
+bool voxel_map_init(void) {
+    g_voxel_map.max_radius_km   = g_config.distance_max_nm * 1.852;     // Convert nm to km
+    g_voxel_map.max_altitude_km = g_config.altitude_max_ft * 0.0003048; // Convert ft to km
+    g_voxel_map.size_x          = (int)((g_voxel_map.max_radius_km * 2.0) / VOXEL_SIZE_HORIZONTAL_KM) + 1;
+    g_voxel_map.size_y          = (int)((g_voxel_map.max_radius_km * 2.0) / VOXEL_SIZE_HORIZONTAL_KM) + 1;
+    g_voxel_map.size_z          = (int)(g_config.altitude_max_ft / VOXEL_SIZE_VERTICAL_FT) + 1;
+    g_voxel_map.total_voxels    = (size_t)g_voxel_map.size_x * (size_t)g_voxel_map.size_y * (size_t)g_voxel_map.size_z;
+    g_voxel_map.data            = (unsigned char *)calloc(g_voxel_map.total_voxels, sizeof(unsigned char));
+    if (!g_voxel_map.data) {
+        printf("voxel: failed to allocate memory for %zu voxels (%.1f MB)\n", g_voxel_map.total_voxels,
+               (double)g_voxel_map.total_voxels / (double)(1024 * 1024));
+        return false;
+    }
+    g_voxel_map.origin_lat = g_config.position_lat;
+    g_voxel_map.origin_lon = g_config.position_lon;
+    g_voxel_map.last_save  = time(NULL);
+    printf("voxel: initialised %dx%dx%d = %zu voxels (%.1f MB), radius=%.1fkm, altitude=%.1fkm\n", g_voxel_map.size_x, g_voxel_map.size_y, g_voxel_map.size_z,
+           g_voxel_map.total_voxels, (double)g_voxel_map.total_voxels / (double)(1024 * 1024), g_voxel_map.max_radius_km, g_voxel_map.max_altitude_km);
+    voxel_map_load();
+    if (pthread_create(&g_voxel_thread, NULL, voxel_save_thread, NULL) != 0) {
+        perror("pthread_create voxel thread");
+        return false;
+    }
+    return true;
+}
+
+void voxel_map_destroy(void) {
+    pthread_join(g_voxel_thread, NULL);
+    if (g_voxel_map.data) {
+        free(g_voxel_map.data);
+        g_voxel_map.data = NULL;
+    }
+}
+
+bool voxel_get_stats(size_t *occupied, size_t *total, double *occupancy_percent) {
+    *occupied          = 0;
+    *total             = 0;
+    *occupancy_percent = 0.0;
+    if (!g_voxel_map.data)
+        return false;
+    *total = g_voxel_map.total_voxels;
+    for (size_t i = 0; i < g_voxel_map.total_voxels; i++)
+        if (g_voxel_map.data[i] > 0)
+            (*occupied)++;
+    if (*total > 0)
+        *occupancy_percent = (double)(*occupied * 100) / (double)*total;
+    return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------------------------------
+
 bool coordinates_are_valid(const double lat, const double lon) { return (lat >= -90.0 && lat <= 90.0 && lon >= -180.0 && lon <= 180.0); }
 
 bool position_is_valid(const double lat, const double lon, const int altitude_ft, const double distance_nm) {
@@ -187,6 +412,15 @@ bool position_is_valid(const double lat, const double lon, const int altitude_ft
 
 // ---------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------
+
+void position_record_set(aircraft_posn_t *const r, const double lat, const double lon, const int altitude_ft, const double distance_nm,
+                         const time_t timestamp) {
+    r->lat         = lat;
+    r->lon         = lon;
+    r->altitude_ft = altitude_ft;
+    r->distance_nm = distance_nm;
+    r->timestamp   = timestamp;
+}
 
 aircraft_data_t *aircraft_find_or_create(const char *const icao) {
     unsigned int index = hash_icao(icao), index_original = index;
@@ -221,8 +455,9 @@ aircraft_data_t *aircraft_find_or_create(const char *const icao) {
     }
 
     strncpy(g_aircraft_list.entries[index].icao, icao, 6);
-    g_aircraft_list.entries[index].icao[6]   = '\0';
-    g_aircraft_list.entries[index].timestamp = 0;
+    g_aircraft_list.entries[index].icao[6]            = '\0';
+    g_aircraft_list.entries[index].timestamp          = 0;
+    g_aircraft_list.entries[index].bounds_initialised = false;
     g_aircraft_list.count++;
 
     return &g_aircraft_list.entries[index];
@@ -241,6 +476,8 @@ void aircraft_position_update(const char *const icao, const double lat, const do
 
     g_aircraft_stat.position_valid++;
 
+    voxel_map_update(lat, lon, altitude_ft);
+
     pthread_mutex_lock(&g_aircraft_list.mutex);
     aircraft_data_t *const aircraft = aircraft_find_or_create(icao);
     if (!aircraft) {
@@ -248,15 +485,39 @@ void aircraft_position_update(const char *const icao, const double lat, const do
         printf("error: hash table full, cannot add %s\n", icao);
         return;
     }
-    aircraft->last_seen = timestamp;
-    if (aircraft->timestamp == 0 || distance > aircraft->distance) {
-        if (g_config.debug && aircraft->timestamp != 0)
-            printf("debug: aircraft position: update (icao=%s, dist %.1f -> %.1f nm)\n", icao, aircraft->distance, distance);
-        aircraft->lat         = lat;
-        aircraft->lon         = lon;
-        aircraft->altitude_ft = altitude_ft;
-        aircraft->distance    = distance;
-        aircraft->timestamp   = timestamp;
+    aircraft->last_seen   = timestamp;
+    aircraft->lat         = lat;
+    aircraft->lon         = lon;
+    aircraft->altitude_ft = altitude_ft;
+    aircraft->distance    = distance;
+    aircraft->timestamp   = timestamp;
+    if (!aircraft->bounds_initialised) {
+        position_record_set(&aircraft->min_lat_pos, lat, lon, altitude_ft, distance, timestamp);
+        position_record_set(&aircraft->max_lat_pos, lat, lon, altitude_ft, distance, timestamp);
+        position_record_set(&aircraft->min_lon_pos, lat, lon, altitude_ft, distance, timestamp);
+        position_record_set(&aircraft->max_lon_pos, lat, lon, altitude_ft, distance, timestamp);
+        position_record_set(&aircraft->min_alt_pos, lat, lon, altitude_ft, distance, timestamp);
+        position_record_set(&aircraft->max_alt_pos, lat, lon, altitude_ft, distance, timestamp);
+        position_record_set(&aircraft->min_dist_pos, lat, lon, altitude_ft, distance, timestamp);
+        position_record_set(&aircraft->max_dist_pos, lat, lon, altitude_ft, distance, timestamp);
+        aircraft->bounds_initialised = true;
+    } else {
+        if (lat < aircraft->min_lat_pos.lat)
+            position_record_set(&aircraft->min_lat_pos, lat, lon, altitude_ft, distance, timestamp);
+        if (lat > aircraft->max_lat_pos.lat)
+            position_record_set(&aircraft->max_lat_pos, lat, lon, altitude_ft, distance, timestamp);
+        if (lon < aircraft->min_lon_pos.lon)
+            position_record_set(&aircraft->min_lon_pos, lat, lon, altitude_ft, distance, timestamp);
+        if (lon > aircraft->max_lon_pos.lon)
+            position_record_set(&aircraft->max_lon_pos, lat, lon, altitude_ft, distance, timestamp);
+        if (altitude_ft < aircraft->min_alt_pos.altitude_ft)
+            position_record_set(&aircraft->min_alt_pos, lat, lon, altitude_ft, distance, timestamp);
+        if (altitude_ft > aircraft->max_alt_pos.altitude_ft)
+            position_record_set(&aircraft->max_alt_pos, lat, lon, altitude_ft, distance, timestamp);
+        if (distance < aircraft->min_dist_pos.distance_nm)
+            position_record_set(&aircraft->min_dist_pos, lat, lon, altitude_ft, distance, timestamp);
+        if (distance > aircraft->max_dist_pos.distance_nm)
+            position_record_set(&aircraft->max_dist_pos, lat, lon, altitude_ft, distance, timestamp);
     }
     pthread_mutex_unlock(&g_aircraft_list.mutex);
 
@@ -275,8 +536,8 @@ void aircraft_position_update(const char *const icao, const double lat, const do
 
 void aircraft_publish_mqtt(void) {
     const time_t now = time(NULL);
-    char line_str[MAX_LINE_LENGTH];
-    char json_str[32768];
+    char line_str[MAX_LINE_LENGTH * 2];
+    char json_str[65536];
     size_t json_off                           = 0;
     unsigned long published_cnt               = 0;
     unsigned char published_set[MAX_AIRCRAFT] = { 0 };
@@ -287,11 +548,30 @@ void aircraft_publish_mqtt(void) {
                          g_config.position_lat, g_config.position_lon);
     for (int i = 0; i < MAX_AIRCRAFT; i++)
         if (g_aircraft_list.entries[i].icao[0] != '\0' && g_aircraft_list.entries[i].timestamp != 0 &&
-            g_aircraft_list.entries[i].published < g_aircraft_list.entries[i].timestamp) {
+            g_aircraft_list.entries[i].published < g_aircraft_list.entries[i].timestamp && g_aircraft_list.entries[i].bounds_initialised) {
+            aircraft_data_t *ac   = &g_aircraft_list.entries[i];
             const size_t line_len = (size_t)snprintf(
-                line_str, sizeof(line_str), "%s{\"icao\":\"%s\",\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld}",
-                (published_cnt > 0 ? "," : ""), g_aircraft_list.entries[i].icao, g_aircraft_list.entries[i].lat, g_aircraft_list.entries[i].lon,
-                g_aircraft_list.entries[i].altitude_ft, g_aircraft_list.entries[i].distance, g_aircraft_list.entries[i].timestamp);
+                line_str, sizeof(line_str),
+                "%s{\"icao\":\"%s\",\"current\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                "\"bounds\":{"
+                "\"min_lat\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                "\"max_lat\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                "\"min_lon\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                "\"max_lon\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                "\"min_alt\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                "\"max_alt\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                "\"min_dist\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                "\"max_dist\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld}"
+                "}}",
+                (published_cnt > 0 ? "," : ""), ac->icao, ac->lat, ac->lon, ac->altitude_ft, ac->distance, ac->timestamp, ac->min_lat_pos.lat,
+                ac->min_lat_pos.lon, ac->min_lat_pos.altitude_ft, ac->min_lat_pos.distance_nm, ac->min_lat_pos.timestamp, ac->max_lat_pos.lat,
+                ac->max_lat_pos.lon, ac->max_lat_pos.altitude_ft, ac->max_lat_pos.distance_nm, ac->max_lat_pos.timestamp, ac->min_lon_pos.lat,
+                ac->min_lon_pos.lon, ac->min_lon_pos.altitude_ft, ac->min_lon_pos.distance_nm, ac->min_lon_pos.timestamp, ac->max_lon_pos.lat,
+                ac->max_lon_pos.lon, ac->max_lon_pos.altitude_ft, ac->max_lon_pos.distance_nm, ac->max_lon_pos.timestamp, ac->min_alt_pos.lat,
+                ac->min_alt_pos.lon, ac->min_alt_pos.altitude_ft, ac->min_alt_pos.distance_nm, ac->min_alt_pos.timestamp, ac->max_alt_pos.lat,
+                ac->max_alt_pos.lon, ac->max_alt_pos.altitude_ft, ac->max_alt_pos.distance_nm, ac->max_alt_pos.timestamp, ac->min_dist_pos.lat,
+                ac->min_dist_pos.lon, ac->min_dist_pos.altitude_ft, ac->min_dist_pos.distance_nm, ac->min_dist_pos.timestamp, ac->max_dist_pos.lat,
+                ac->max_dist_pos.lon, ac->max_dist_pos.altitude_ft, ac->max_dist_pos.distance_nm, ac->max_dist_pos.timestamp);
             if (json_off + line_len >= ((int)sizeof(json_str) - 3))
                 break;
             json_off += (size_t)snprintf(json_str + json_off, sizeof(json_str) - json_off, "%s", line_str);
@@ -495,11 +775,15 @@ void print_config(void) {
 }
 
 void print_status(void) {
-    printf(
-        "status: messages=%lu, positions=%lu (valid=%lu, invalid=%lu), aircraft=%d, distance-max=%.1fnm (%s), altitude-max=%.0fft (%s), published-mqtt=%lu\n",
-        g_aircraft_stat.messages_total, g_aircraft_stat.messages_position, g_aircraft_stat.position_valid, g_aircraft_stat.position_invalid,
-        g_aircraft_list.count, g_aircraft_stat.distance_max, g_aircraft_stat.distance_max_icao, g_aircraft_stat.altitude_max, g_aircraft_stat.altitude_max_icao,
-        g_aircraft_stat.published_mqtt);
+    printf("status: messages=%lu, positions=%lu (valid=%lu, invalid=%lu), aircraft=%d, distance-max=%.1fnm (%s), altitude-max=%.0fft (%s), published-mqtt=%lu",
+           g_aircraft_stat.messages_total, g_aircraft_stat.messages_position, g_aircraft_stat.position_valid, g_aircraft_stat.position_invalid,
+           g_aircraft_list.count, g_aircraft_stat.distance_max, g_aircraft_stat.distance_max_icao, g_aircraft_stat.altitude_max,
+           g_aircraft_stat.altitude_max_icao, g_aircraft_stat.published_mqtt);
+    size_t voxel_occupied = 0, voxel_total = 0;
+    double voxel_occupancy = 0.0;
+    if (voxel_get_stats(&voxel_occupied, &voxel_total, &voxel_occupancy))
+        printf(", voxels=%zu/%zu (%.2f%%)", voxel_occupied, voxel_total, voxel_occupancy);
+    printf("\n");
     fflush(stdout);
 }
 
@@ -507,7 +791,7 @@ void print_status(void) {
 // ---------------------------------------------------------------------------------------------------------------------
 
 void print_help(const char *const prog_name) {
-    printf("usage: %s [OPTIONS]\n", prog_name);
+    printf("usage: %s [options]\n", prog_name);
     printf("options:\n");
     printf("  --help                Show this help message\n");
     printf("  --debug               Enable debug output\n");
@@ -636,6 +920,10 @@ int main(const int argc, char *const argv[]) {
     g_last_mqtt   = time(NULL);
     if (!mqtt_begin())
         return 1;
+
+    if (!voxel_map_init())
+        return 1;
+
     pthread_mutex_init(&g_aircraft_list.mutex, NULL);
     pthread_t processing_thread;
     if (pthread_create(&processing_thread, NULL, adsb_processing_thread, NULL) != 0) {
@@ -658,6 +946,7 @@ int main(const int argc, char *const argv[]) {
     pthread_join(processing_thread, NULL);
     mqtt_end();
     pthread_mutex_destroy(&g_aircraft_list.mutex);
+    voxel_map_destroy();
 
     print_status();
     return 0;

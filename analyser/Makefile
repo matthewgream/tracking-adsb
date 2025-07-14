@@ -31,7 +31,7 @@ clean:
 format:
 	clang-format -i $(SOURCES)
 
-run:
+run: $(TARGET)
 	bash -c 'source $(TARGET).default && ./$(TARGET) $$ADSB_ANALYSER_OPTIONS'
 
 .PHONY: clean format run
