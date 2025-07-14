@@ -1,1 +1,1 @@
-ADSB_ANALYSER_OPTIONS="--adsb=adsb-hollandparklondon.local --mqtt=127.0.0.1 --position=51.50092998192453,-0.20671121337722095 --distance-max=500 --altitude-max=75000"
+ADSB_ANALYSER_OPTIONS=""

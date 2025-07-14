@@ -17,6 +17,8 @@ CFLAGS_STRICT=-Werror -Wcast-align -Wcast-qual \
 CFLAGS=$(CFLAGS_COMMON) $(CFLAGS_STRICT) -O3 -march=native -fstack-protector-strong
 LDFLAGS=-lm -lpthread -lmosquitto
 
+HOSTNAME=$(shell hostname)
+
 TARGET=adsb_analyser
 SOURCES=adsb_analyser.c
 
@@ -31,10 +33,10 @@ clean:
 format:
 	clang-format -i $(SOURCES)
 
-run: $(TARGET)
-	bash -c 'source $(TARGET).default && ./$(TARGET) $$ADSB_ANALYSER_OPTIONS'
+debug: $(TARGET) $(TARGET).default.debug
+	bash -c 'source $(TARGET).default.debug && ./$(TARGET) $$ADSB_ANALYSER_OPTIONS'
 
-.PHONY: clean format run
+.PHONY: clean format debug
 
 ##
 
@@ -51,8 +53,8 @@ define install_service_systemd
 endef
 install_target: $(TARGET)
 	install -m 755 $(TARGET) $(INSTALL_DIR)
-install_default: $(TARGET).default
-	cp $(TARGET).default /etc/default/${TARGET}
+install_default: $(TARGET).default.$(HOSTNAME)
+	cp $(TARGET).default.$(HOSTNAME) /etc/default/${TARGET}
 install_service: $(TARGET).service
 	$(call install_service_systemd,$(TARGET),$(TARGET))
 install: install_target install_default install_service

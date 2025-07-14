@@ -1,6 +1,6 @@
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -19,9 +19,10 @@
 #include <time.h>
 #include <unistd.h>
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
+#define DEFAULT_DIRECTORY "/opt/tracking-adsb/analyser"
 #define DEFAULT_ADSB_HOST "127.0.0.1"
 #define DEFAULT_ADSB_PORT 30003
 #define DEFAULT_MQTT_HOST "127.0.0.1"
@@ -29,15 +30,15 @@
 #define DEFAULT_MQTT_TOPIC "adsb/analyser"
 #define DEFAULT_MQTT_CLIENT_ID "adsb_analyser"
 #define DEFAULT_MQTT_INTERVAL 300
-#define DEFAULT_STATUS_INTERVAL 60
+#define DEFAULT_STATUS_INTERVAL 300
 #define DEFAULT_POSITION_LAT 51.501126
 #define DEFAULT_POSITION_LON -0.14239
 #define DEFAULT_DISTANCE_MAX_NM 1000.0
 #define DEFAULT_ALTITUDE_MAX_FT 75000.0
 #define DEFAULT_ALTITUDE_MIN_FT -1500.0
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
 #define MAX_NAME_LENGTH 256
 #define MAX_LINE_LENGTH 512
@@ -46,10 +47,11 @@
 #define PRUNE_THRESHOLD 0.95
 #define PRUNE_RATIO 0.05
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
 typedef struct {
+    char directory[MAX_NAME_LENGTH];
     char adsb_host[MAX_NAME_LENGTH];
     unsigned short adsb_port;
     char mqtt_host[MAX_NAME_LENGTH];
@@ -64,8 +66,8 @@ typedef struct {
     bool debug;
 } config_t;
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
 typedef struct {
     double lat;
@@ -106,10 +108,11 @@ typedef struct {
     char altitude_max_icao[7];
 } aircraft_stat_t;
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
 config_t g_config = { // defaults
+    .directory       = DEFAULT_DIRECTORY,
     .adsb_host       = DEFAULT_ADSB_HOST,
     .adsb_port       = DEFAULT_ADSB_PORT,
     .mqtt_host       = DEFAULT_MQTT_HOST,
@@ -130,8 +133,8 @@ time_t g_last_mqtt              = 0;
 time_t g_last_status            = 0;
 struct mosquitto *g_mosq        = NULL;
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
 bool host_resolve(const char *const hostname, char *const host, const size_t host_size) {
     struct in_addr addr;
@@ -185,41 +188,53 @@ unsigned int hash_icao(const char *const icao) {
     return hash & HASH_MASK;
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
-#define VOXEL_SIZE_HORIZONTAL_KM 1.0
+#define VOXEL_SIZE_HORIZONTAL_NM 1.0
 #define VOXEL_SIZE_VERTICAL_FT 1000.0
-#define VOXEL_SIZE_VERTICAL_KM (VOXEL_SIZE_VERTICAL_FT * 0.0003048)
-#define VOXEL_MAX_COUNT 255
+#define VOXEL_MAX_COUNT ((1 << 16) - 1)
 #define VOXEL_FILE_PATH "adsb_voxel_map.dat"
-#define VOXEL_SAVE_INTERVAL 1800    // 30 minutes
+#define VOXEL_SAVE_INTERVAL (30 * 60)
 #define VOXEL_FILE_MAGIC 0x56585041 // "VXPA" in hex
 #define VOXEL_FILE_VERSION 1
 
+typedef unsigned short voxel_data_t;
+
 typedef struct {
-    unsigned char *data;
+    voxel_data_t *data;
     int size_x, size_y, size_z;
+    int bits;
     size_t total_voxels;
     double origin_lat, origin_lon;
-    double max_radius_km, max_altitude_km;
+    double max_radius_nm, max_altitude_ft;
     time_t last_save;
 } voxel_map_t;
 
 voxel_map_t g_voxel_map = { 0 };
 pthread_t g_voxel_thread;
 
-int constrain_int(const int v, const int v_min, const int v_max) {
-    return v < v_min ? v_min : (v > v_max ? v_max : v);
+int constrain_int(const int v, const int v_min, const int v_max) { return v < v_min ? v_min : (v > v_max ? v_max : v); }
+
+double voxel_get_memorysize(void) { return (double)(g_voxel_map.total_voxels * sizeof(voxel_data_t)) / (double)(1024 * 1024); }
+
+double voxel_get_occupancy(void) {
+    if (!g_voxel_map.data)
+        return 0.0;
+    size_t occupied = 0;
+    for (size_t i = 0; i < g_voxel_map.total_voxels; i++)
+        if (g_voxel_map.data[i])
+            occupied++;
+    return (double)(occupied * 100) / (double)g_voxel_map.total_voxels;
 }
 
 void voxel_coords_to_indices(const double lat, const double lon, const double altitude_ft, int *const x, int *const y, int *const z) {
-    const double distance_km = calculate_distance_nm(g_config.position_lat, g_config.position_lon, lat, lon) * 1.852;
+    const double distance_nm = calculate_distance_nm(g_config.position_lat, g_config.position_lon, lat, lon);
     const double lat1_rad = g_config.position_lat * M_PI / 180.0, lat2_rad = lat * M_PI / 180.0, dlon_rad = (lon - g_config.position_lon) * M_PI / 180.0;
     const double bearing = atan2(sin(dlon_rad) * cos(lat2_rad), cos(lat1_rad) * sin(lat2_rad) - sin(lat1_rad) * cos(lat2_rad) * cos(dlon_rad));
-    const double dx_km = distance_km * sin(bearing), dy_km = distance_km * cos(bearing);
-    *x = constrain_int((int)((dx_km / VOXEL_SIZE_HORIZONTAL_KM) + (g_voxel_map.size_x / 2)), 0, g_voxel_map.size_x - 1);
-    *y = constrain_int((int)((dy_km / VOXEL_SIZE_HORIZONTAL_KM) + (g_voxel_map.size_y / 2)), 0, g_voxel_map.size_y - 1);
+    const double dx_nm = distance_nm * sin(bearing), dy_nm = distance_nm * cos(bearing);
+    *x = constrain_int((int)((dx_nm / VOXEL_SIZE_HORIZONTAL_NM) + (g_voxel_map.size_x / 2)), 0, g_voxel_map.size_x - 1);
+    *y = constrain_int((int)((dy_nm / VOXEL_SIZE_HORIZONTAL_NM) + (g_voxel_map.size_y / 2)), 0, g_voxel_map.size_y - 1);
     *z = constrain_int((int)((altitude_ft / VOXEL_SIZE_VERTICAL_FT)), 0, g_voxel_map.size_z - 1);
 }
 
@@ -227,28 +242,27 @@ size_t voxel_indices_to_index(const int x, const int y, const int z) {
     return (size_t)z * (size_t)g_voxel_map.size_x * (size_t)g_voxel_map.size_y + (size_t)y * (size_t)g_voxel_map.size_x + (size_t)x;
 }
 
-void voxel_map_update(const double lat, const double lon, const int altitude_ft) {
+void voxel_map_update(const double lat, const double lon, const double altitude_ft) {
     if (!g_voxel_map.data)
         return;
-
     int x, y, z;
-    voxel_coords_to_indices(lat, lon, (double)altitude_ft, &x, &y, &z);
+    voxel_coords_to_indices(lat, lon, altitude_ft, &x, &y, &z);
     const size_t idx = voxel_indices_to_index(x, y, z);
-    if (g_voxel_map.data[idx] < VOXEL_MAX_COUNT) {
-        g_voxel_map.data[idx]++;
-        if (g_config.debug && g_voxel_map.data[idx] == 1)
-            printf("debug: voxel: created [%d,%d,%d] (%.1fkm, %.1fkm, %.0fft)\n", x, y, z, (x - g_voxel_map.size_x / 2) * VOXEL_SIZE_HORIZONTAL_KM,
-                   (y - g_voxel_map.size_y / 2) * VOXEL_SIZE_HORIZONTAL_KM, z * VOXEL_SIZE_VERTICAL_FT);
-    }
+    if (g_voxel_map.data[idx] < VOXEL_MAX_COUNT)
+        if (g_voxel_map.data[idx]++ == 0 && g_config.debug)
+            printf("debug: voxel: created [%d,%d,%d] (%.1fnm, %.1fnm, %.0fft)\n", x, y, z, (x - g_voxel_map.size_x / 2) * VOXEL_SIZE_HORIZONTAL_NM,
+                   (y - g_voxel_map.size_y / 2) * VOXEL_SIZE_HORIZONTAL_NM, z * VOXEL_SIZE_VERTICAL_FT);
 }
 
 bool voxel_map_save(void) {
     if (!g_voxel_map.data)
         return false;
 
-    FILE *fp = fopen(VOXEL_FILE_PATH, "wb");
+    char path[MAX_LINE_LENGTH];
+    snprintf(path, sizeof(path), "%s/%s", g_config.directory, VOXEL_FILE_PATH);
+    FILE *fp = fopen(path, "wb");
     if (!fp) {
-        printf("voxel: map open file for write failed: %s\n", VOXEL_FILE_PATH);
+        printf("voxel: map open file for write failed: %s\n", path);
         return false;
     }
 
@@ -260,22 +274,18 @@ bool voxel_map_save(void) {
     fwrite(&g_voxel_map.size_z, sizeof(g_voxel_map.size_z), 1, fp);
     fwrite(&g_voxel_map.origin_lat, sizeof(g_voxel_map.origin_lat), 1, fp);
     fwrite(&g_voxel_map.origin_lon, sizeof(g_voxel_map.origin_lon), 1, fp);
-    fwrite(&g_voxel_map.max_radius_km, sizeof(g_voxel_map.max_radius_km), 1, fp);
-    fwrite(&g_voxel_map.max_altitude_km, sizeof(g_voxel_map.max_altitude_km), 1, fp);
-    size_t written = fwrite(g_voxel_map.data, sizeof(unsigned char), g_voxel_map.total_voxels, fp);
+    fwrite(&g_voxel_map.max_radius_nm, sizeof(g_voxel_map.max_radius_nm), 1, fp);
+    fwrite(&g_voxel_map.max_altitude_ft, sizeof(g_voxel_map.max_altitude_ft), 1, fp);
+    size_t written = fwrite(g_voxel_map.data, sizeof(voxel_data_t), g_voxel_map.total_voxels, fp);
 
     fclose(fp);
     if (written != g_voxel_map.total_voxels) {
-        printf("voxel: map write file failed (wrote %zu of %zu voxels): %s\n", written, g_voxel_map.total_voxels, VOXEL_FILE_PATH);
+        printf("voxel: map write file failed (wrote %zu of %zu voxels): %s\n", written, g_voxel_map.total_voxels, path);
         return false;
     }
-    size_t occupied = 0;
-    for (size_t i = 0; i < g_voxel_map.total_voxels; i++)
-        if (g_voxel_map.data[i] > 0)
-            occupied++;
 
-    printf("voxel: map save file to %s (%.1f MB, %.1f%% occupied)\n", VOXEL_FILE_PATH, (double)g_voxel_map.total_voxels / (double)(1024 * 1024),
-           (double)(occupied * 100) / (double)g_voxel_map.total_voxels);
+    if (g_config.debug)
+        printf("voxel: map save file to %s (%.1f%% occupied)\n", path, voxel_get_occupancy());
     return true;
 }
 
@@ -283,16 +293,18 @@ bool voxel_map_load(void) {
     if (!g_voxel_map.data)
         return false;
 
-    FILE *fp = fopen(VOXEL_FILE_PATH, "rb");
+    char path[MAX_LINE_LENGTH];
+    snprintf(path, sizeof(path), "%s/%s", g_config.directory, VOXEL_FILE_PATH);
+    FILE *fp = fopen(path, "rb");
     if (!fp) {
         if (errno != ENOENT)
-            printf("voxel: map open file for read failed: %s\n", VOXEL_FILE_PATH);
+            printf("voxel: map open file for read failed: %s\n", path);
         return false;
     }
 
     unsigned int magic, version;
     int size_x, size_y, size_z;
-    double origin_lat, origin_lon, max_radius_km, max_altitude_km;
+    double origin_lat, origin_lon, max_radius_nm, max_altitude_ft;
     if (fread(&magic, sizeof(magic), 1, fp) != 1 || magic != VOXEL_FILE_MAGIC) {
         printf("voxel: map read file has invalid magic\n");
         fclose(fp);
@@ -309,37 +321,32 @@ bool voxel_map_load(void) {
     fread(&size_z, sizeof(size_z), 1, fp);
     fread(&origin_lat, sizeof(origin_lat), 1, fp);
     fread(&origin_lon, sizeof(origin_lon), 1, fp);
-    fread(&max_radius_km, sizeof(max_radius_km), 1, fp);
-    fread(&max_altitude_km, sizeof(max_altitude_km), 1, fp);
+    fread(&max_radius_nm, sizeof(max_radius_nm), 1, fp);
+    fread(&max_altitude_ft, sizeof(max_altitude_ft), 1, fp);
     if (size_x != g_voxel_map.size_x || size_y != g_voxel_map.size_y || size_z != g_voxel_map.size_z || fabs(origin_lat - g_voxel_map.origin_lat) > 0.0001 ||
         fabs(origin_lon - g_voxel_map.origin_lon) > 0.0001) {
         printf("voxel: map read file has mismatched dimensions or origin\n");
         fclose(fp);
         return false;
     }
-    const size_t read = fread(g_voxel_map.data, sizeof(unsigned char), g_voxel_map.total_voxels, fp);
+    const size_t read = fread(g_voxel_map.data, sizeof(voxel_data_t), g_voxel_map.total_voxels, fp);
 
     fclose(fp);
 
     if (read != g_voxel_map.total_voxels) {
-        printf("voxel: map read file failed (read %zu of %zu voxels): %s\n", read, g_voxel_map.total_voxels, VOXEL_FILE_PATH);
+        printf("voxel: map read file failed (read %zu of %zu voxels): %s\n", read, g_voxel_map.total_voxels, path);
         return false;
     }
 
-    size_t occupied = 0;
-    for (size_t i = 0; i < g_voxel_map.total_voxels; i++)
-        if (g_voxel_map.data[i] > 0)
-            occupied++;
-
-    printf("voxel: map load file from %s (%.1f MB, %.1f%% occupied)\n", VOXEL_FILE_PATH, (double)g_voxel_map.total_voxels / (double)(1024 * 1024),
-           (double)(occupied * 100) / (double)g_voxel_map.total_voxels);
+    printf("voxel: map load file from %s (%.1f%% occupied)\n", path, voxel_get_occupancy());
     return true;
 }
 
 void *voxel_save_thread(void *arg __attribute__((unused))) {
-    printf("voxel: map save file thread started\n");
+    if (g_config.debug)
+        printf("voxel: map save file thread started\n");
     while (g_running) {
-        sleep(1);
+        sleep(15);
         const time_t now = time(NULL);
         if (now - g_voxel_map.last_save >= VOXEL_SAVE_INTERVAL) {
             voxel_map_save();
@@ -347,28 +354,30 @@ void *voxel_save_thread(void *arg __attribute__((unused))) {
         }
     }
     voxel_map_save();
-    printf("voxel: map save file thread stopped\n");
+    if (g_config.debug)
+        printf("voxel: map save file thread stopped\n");
     return NULL;
 }
 
-bool voxel_map_init(void) {
-    g_voxel_map.max_radius_km   = g_config.distance_max_nm * 1.852;     // Convert nm to km
-    g_voxel_map.max_altitude_km = g_config.altitude_max_ft * 0.0003048; // Convert ft to km
-    g_voxel_map.size_x          = (int)((g_voxel_map.max_radius_km * 2.0) / VOXEL_SIZE_HORIZONTAL_KM) + 1;
-    g_voxel_map.size_y          = (int)((g_voxel_map.max_radius_km * 2.0) / VOXEL_SIZE_HORIZONTAL_KM) + 1;
+bool voxel_map_begin(void) {
+    g_voxel_map.max_radius_nm   = g_config.distance_max_nm;
+    g_voxel_map.max_altitude_ft = g_config.altitude_max_ft;
+    g_voxel_map.size_x          = (int)((g_voxel_map.max_radius_nm * 2.0) / VOXEL_SIZE_HORIZONTAL_NM) + 1;
+    g_voxel_map.size_y          = (int)((g_voxel_map.max_radius_nm * 2.0) / VOXEL_SIZE_HORIZONTAL_NM) + 1;
     g_voxel_map.size_z          = (int)(g_config.altitude_max_ft / VOXEL_SIZE_VERTICAL_FT) + 1;
+    g_voxel_map.bits            = sizeof(voxel_data_t) * 8;
     g_voxel_map.total_voxels    = (size_t)g_voxel_map.size_x * (size_t)g_voxel_map.size_y * (size_t)g_voxel_map.size_z;
-    g_voxel_map.data            = (unsigned char *)calloc(g_voxel_map.total_voxels, sizeof(unsigned char));
+    g_voxel_map.data            = (voxel_data_t *)calloc(g_voxel_map.total_voxels, sizeof(voxel_data_t));
     if (!g_voxel_map.data) {
-        printf("voxel: failed to allocate memory for %zu voxels (%.1f MB)\n", g_voxel_map.total_voxels,
-               (double)g_voxel_map.total_voxels / (double)(1024 * 1024));
+        printf("voxel: failed to allocate memory for %zu voxels (%.1f MB)\n", g_voxel_map.total_voxels, voxel_get_memorysize());
         return false;
     }
     g_voxel_map.origin_lat = g_config.position_lat;
     g_voxel_map.origin_lon = g_config.position_lon;
     g_voxel_map.last_save  = time(NULL);
-    printf("voxel: initialised %dx%dx%d = %zu voxels (%.1f MB), radius=%.1fkm, altitude=%.1fkm\n", g_voxel_map.size_x, g_voxel_map.size_y, g_voxel_map.size_z,
-           g_voxel_map.total_voxels, (double)g_voxel_map.total_voxels / (double)(1024 * 1024), g_voxel_map.max_radius_km, g_voxel_map.max_altitude_km);
+    printf("voxel: initialised using %.0fnm/%.0fft boxes to %.0fnm radius and %.0fft altitude at %d bits = %.0fK voxels (%.1f MB)\n", VOXEL_SIZE_HORIZONTAL_NM,
+           VOXEL_SIZE_VERTICAL_FT, g_voxel_map.max_radius_nm, g_voxel_map.max_altitude_ft, g_voxel_map.bits,
+           (double)g_voxel_map.total_voxels / (double)(1024 * 1024), voxel_get_memorysize());
     voxel_map_load();
     if (pthread_create(&g_voxel_thread, NULL, voxel_save_thread, NULL) != 0) {
         perror("pthread_create voxel thread");
@@ -377,7 +386,7 @@ bool voxel_map_init(void) {
     return true;
 }
 
-void voxel_map_destroy(void) {
+void voxel_map_end(void) {
     pthread_join(g_voxel_thread, NULL);
     if (g_voxel_map.data) {
         free(g_voxel_map.data);
@@ -385,23 +394,22 @@ void voxel_map_destroy(void) {
     }
 }
 
-bool voxel_get_stats(size_t *occupied, size_t *total, double *occupancy_percent) {
-    *occupied          = 0;
-    *total             = 0;
-    *occupancy_percent = 0.0;
+bool voxel_get_stats(size_t *occupied, size_t *total, double *occupancy) {
+    *occupied  = 0;
+    *total     = 0;
+    *occupancy = 0.0;
     if (!g_voxel_map.data)
         return false;
     *total = g_voxel_map.total_voxels;
     for (size_t i = 0; i < g_voxel_map.total_voxels; i++)
-        if (g_voxel_map.data[i] > 0)
+        if (g_voxel_map.data[i])
             (*occupied)++;
-    if (*total > 0)
-        *occupancy_percent = (double)(*occupied * 100) / (double)*total;
+    *occupancy = (double)(*occupied * 100) / (double)g_voxel_map.total_voxels;
     return true;
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
 bool coordinates_are_valid(const double lat, const double lon) { return (lat >= -90.0 && lat <= 90.0 && lon >= -180.0 && lon <= 180.0); }
 
@@ -410,8 +418,8 @@ bool position_is_valid(const double lat, const double lon, const int altitude_ft
            (altitude_ft >= DEFAULT_ALTITUDE_MIN_FT && altitude_ft <= g_config.altitude_max_ft) && (distance_nm <= g_config.distance_max_nm);
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
 void position_record_set(aircraft_posn_t *const r, const double lat, const double lon, const int altitude_ft, const double distance_nm,
                          const time_t timestamp) {
@@ -593,8 +601,8 @@ void aircraft_publish_mqtt(void) {
     }
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
 bool adsb_parse_sbs_position(const char *const line, char *const icao, double *const lat, double *const lon, int *const altitude) {
 
@@ -724,8 +732,8 @@ void *adsb_processing_thread(void *arg __attribute__((unused))) {
     return NULL;
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
 void mqtt_on_connect(struct mosquitto *mosq __attribute__((unused)), void *obj __attribute__((unused)), int rc) {
     if (rc == 0)
@@ -763,8 +771,8 @@ void mqtt_end(void) {
     }
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
 void print_config(void) {
     printf("config: adsb=%s:%d, mqtt=%s:%d, mqtt-topic=%s, mqtt-interval=%lus, status-interval=%lus, distance-max=%.0fnm, altitude=max=%.0fft, "
@@ -782,19 +790,19 @@ void print_status(void) {
     size_t voxel_occupied = 0, voxel_total = 0;
     double voxel_occupancy = 0.0;
     if (voxel_get_stats(&voxel_occupied, &voxel_total, &voxel_occupancy))
-        printf(", voxels=%zu/%zu (%.2f%%)", voxel_occupied, voxel_total, voxel_occupancy);
+        printf(", voxels=%.0fK/%.0fK (%.1f%%)", (double)voxel_occupied / (double)(1024 * 1024), (double)voxel_total / (double)(1024 * 1024), voxel_occupancy);
     printf("\n");
-    fflush(stdout);
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
 void print_help(const char *const prog_name) {
     printf("usage: %s [options]\n", prog_name);
     printf("options:\n");
     printf("  --help                Show this help message\n");
     printf("  --debug               Enable debug output\n");
+    printf("  --directory=PATH      storage directory for voxel and data files (default: %s)\n", DEFAULT_DIRECTORY);
     printf("  --adsb=HOST[:PORT]    ADS-B server (default: %s:%d)\n", DEFAULT_ADSB_HOST, DEFAULT_ADSB_PORT);
     printf("  --mqtt=HOST[:PORT]    MQTT broker (default: %s:%d)\n", DEFAULT_MQTT_HOST, DEFAULT_MQTT_PORT);
     printf("  --mqtt-topic=TOPIC    MQTT topic (default: %s)\n", DEFAULT_MQTT_TOPIC);
@@ -811,6 +819,7 @@ void print_help(const char *const prog_name) {
 const struct option long_options[] = { // defaults
     { "help", no_argument, 0, 'h' },
     { "debug", no_argument, 0, 'd' },
+    { "directory", required_argument, 0, 'l' },
     { "adsb", required_argument, 0, 'a' },
     { "mqtt", required_argument, 0, 'm' },
     { "mqtt-topic", required_argument, 0, 't' },
@@ -831,6 +840,10 @@ int parse_options(const int argc, char *const argv[]) {
             return 1;
         case 'd':
             g_config.debug = true;
+            break;
+        case 'l':
+            strncpy(g_config.directory, optarg, sizeof(g_config.directory) - 1);
+            g_config.directory[sizeof(g_config.directory) - 1] = '\0';
             break;
         case 'a':
             if (!host_parse(optarg, g_config.adsb_host, sizeof(g_config.adsb_host), &g_config.adsb_port, DEFAULT_ADSB_PORT))
@@ -898,8 +911,8 @@ int parse_options(const int argc, char *const argv[]) {
     return 0;
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
 void signal_handler(const int sig) {
     if (sig == SIGINT || sig == SIGTERM) {
@@ -921,7 +934,7 @@ int main(const int argc, char *const argv[]) {
     if (!mqtt_begin())
         return 1;
 
-    if (!voxel_map_init())
+    if (!voxel_map_begin())
         return 1;
 
     pthread_mutex_init(&g_aircraft_list.mutex, NULL);
@@ -942,15 +955,15 @@ int main(const int argc, char *const argv[]) {
         }
         sleep(1);
     }
+    print_status();
 
     pthread_join(processing_thread, NULL);
     mqtt_end();
     pthread_mutex_destroy(&g_aircraft_list.mutex);
-    voxel_map_destroy();
+    voxel_map_end();
 
-    print_status();
     return 0;
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ---------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
