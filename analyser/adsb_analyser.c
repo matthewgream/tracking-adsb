@@ -55,11 +55,12 @@ typedef struct {
     char mqtt_host[MAX_NAME_LENGTH];
     unsigned short mqtt_port;
     char mqtt_topic[MAX_NAME_LENGTH];
-    int mqtt_interval;
-    int status_interval;
+    time_t interval_mqtt;
+    time_t interval_status;
     double distance_max_nm;
     double altitude_max_ft;
-    double position_lat, position_lon;
+    double position_lat;
+    double position_lon;
     bool debug;
 } config_t;
 
@@ -75,13 +76,13 @@ typedef struct {
     time_t timestamp;
     time_t last_seen;
     time_t published;
-} aircraft_t;
+} aircraft_data_t;
 
 typedef struct {
-    aircraft_t entries[MAX_AIRCRAFT];
+    aircraft_data_t entries[MAX_AIRCRAFT];
     int count;
     pthread_mutex_t mutex;
-} aircraft_map_t;
+} aircraft_list_t;
 
 typedef struct {
     unsigned long messages_total;
@@ -93,7 +94,7 @@ typedef struct {
     char distance_max_icao[7];
     double altitude_max;
     char altitude_max_icao[7];
-} stats_t;
+} aircraft_stat_t;
 
 // ---------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------
@@ -104,29 +105,28 @@ config_t g_config = { // defaults
     .mqtt_host       = DEFAULT_MQTT_HOST,
     .mqtt_port       = DEFAULT_MQTT_PORT,
     .mqtt_topic      = DEFAULT_MQTT_TOPIC,
-    .mqtt_interval   = DEFAULT_MQTT_INTERVAL,
-    .status_interval = DEFAULT_STATUS_INTERVAL,
+    .interval_mqtt   = DEFAULT_MQTT_INTERVAL,
+    .interval_status = DEFAULT_STATUS_INTERVAL,
     .distance_max_nm = DEFAULT_DISTANCE_MAX_NM,
     .altitude_max_ft = DEFAULT_ALTITUDE_MAX_FT,
     .position_lat    = DEFAULT_POSITION_LAT,
     .position_lon    = DEFAULT_POSITION_LON,
     .debug           = false
 };
-aircraft_map_t g_aircraft_map = { 0 };
-stats_t g_stats               = { 0 };
-volatile bool g_running       = true;
-time_t g_last_mqtt;
-time_t g_last_status;
-struct mosquitto *g_mosq = NULL;
+aircraft_list_t g_aircraft_list = { 0 };
+aircraft_stat_t g_aircraft_stat = { 0 };
+volatile bool g_running         = true;
+time_t g_last_mqtt              = 0;
+time_t g_last_status            = 0;
+struct mosquitto *g_mosq        = NULL;
 
 // ---------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------
 
-bool host_resolve(const char *const hostname, char *const ip_str, const size_t ip_str_size) {
+bool host_resolve(const char *const hostname, char *const host, const size_t host_size) {
     struct in_addr addr;
     if (inet_aton(hostname, &addr)) {
-        snprintf(ip_str, ip_str_size, "%s", hostname);
-        ip_str[ip_str_size - 1] = '\0';
+        snprintf(host, host_size, "%s", hostname);
         return true;
     }
     const struct hostent *he = gethostbyname(hostname);
@@ -135,29 +135,28 @@ bool host_resolve(const char *const hostname, char *const ip_str, const size_t i
         return false;
     }
     addr.s_addr = *((in_addr_t *)he->h_addr_list[0]);
-    snprintf(ip_str, ip_str_size, "%s", inet_ntoa(addr));
+    snprintf(host, host_size, "%s", inet_ntoa(addr));
     return true;
 }
 
 bool host_parse(const char *const input, char *const host, const size_t host_size, unsigned short *const port, const unsigned short default_port) {
     const char *const colon = strrchr(input, ':');
     if (!colon) {
-        strncpy(host, input, host_size - 1);
-        host[host_size - 1] = '\0';
-        *port               = default_port;
+        snprintf(host, host_size, "%s", input);
+        *port = default_port;
     } else {
         const size_t host_len = (size_t)(colon - input);
         if (host_len >= host_size) {
             fprintf(stderr, "host name too long\n");
             return false;
         }
-        strncpy(host, input, host_len);
-        host[host_len] = '\0';
-        *port          = (unsigned short)atoi(colon + 1);
-        if (*port <= 0) {
+        const unsigned short provided_port = (unsigned short)atoi(colon + 1);
+        if (provided_port <= 0) {
             fprintf(stderr, "invalid port number: %s\n", colon + 1);
             return false;
         }
+        snprintf(host, host_size, "%.*s", (int)host_len, input);
+        *port = provided_port;
     }
     return true;
 }
@@ -181,7 +180,7 @@ unsigned int hash_icao(const char *const icao) {
 
 bool coordinates_are_valid(const double lat, const double lon) { return (lat >= -90.0 && lat <= 90.0 && lon >= -180.0 && lon <= 180.0); }
 
-bool validate_position(const double lat, const double lon, const int altitude_ft, const double distance_nm) {
+bool position_is_valid(const double lat, const double lon, const int altitude_ft, const double distance_nm) {
     return (lat >= -90.0 && lat <= 90.0 && lon >= -180.0 && lon <= 180.0) &&
            (altitude_ft >= DEFAULT_ALTITUDE_MIN_FT && altitude_ft <= g_config.altitude_max_ft) && (distance_nm <= g_config.distance_max_nm);
 }
@@ -189,18 +188,17 @@ bool validate_position(const double lat, const double lon, const int altitude_ft
 // ---------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------
 
-aircraft_t *aircraft_find_or_create(const char *const icao) {
+aircraft_data_t *aircraft_find_or_create(const char *const icao) {
     unsigned int index = hash_icao(icao), index_original = index;
 
-    while (g_aircraft_map.entries[index].icao[0] != '\0') {
-        if (strcmp(g_aircraft_map.entries[index].icao, icao) == 0)
-            return &g_aircraft_map.entries[index]; // Found existing
-        index = (index + 1) & HASH_MASK;
-        if (index == index_original)
+    while (g_aircraft_list.entries[index].icao[0] != '\0') {
+        if (strcmp(g_aircraft_list.entries[index].icao, icao) == 0)
+            return &g_aircraft_list.entries[index]; // Found existing
+        if ((index = (index + 1) & HASH_MASK) == index_original)
             return NULL;
     }
 
-    if (g_aircraft_map.count >= (int)(MAX_AIRCRAFT * PRUNE_THRESHOLD)) {
+    if (g_aircraft_list.count >= (int)(MAX_AIRCRAFT * PRUNE_THRESHOLD)) {
         int to_remove      = (int)(MAX_AIRCRAFT * PRUNE_RATIO);
         time_t oldest_time = time(NULL);
         if (g_config.debug)
@@ -208,114 +206,110 @@ aircraft_t *aircraft_find_or_create(const char *const icao) {
         while (to_remove > 0) {
             int oldest_idx = -1;
             oldest_time    = time(NULL);
-            // Find oldest entry
             for (int i = 0; i < MAX_AIRCRAFT; i++)
-                if (g_aircraft_map.entries[i].icao[0] != '\0' && g_aircraft_map.entries[i].last_seen < oldest_time) {
-                    oldest_time = g_aircraft_map.entries[i].last_seen;
+                if (g_aircraft_list.entries[i].icao[0] != '\0' && g_aircraft_list.entries[i].last_seen < oldest_time) {
+                    oldest_time = g_aircraft_list.entries[i].last_seen;
                     oldest_idx  = i;
                 }
             if (oldest_idx >= 0) {
-                g_aircraft_map.entries[oldest_idx].icao[0] = '\0';
-                g_aircraft_map.count--;
+                g_aircraft_list.entries[oldest_idx].icao[0] = '\0';
+                g_aircraft_list.count--;
                 to_remove--;
             } else
                 break;
         }
     }
 
-    strncpy(g_aircraft_map.entries[index].icao, icao, 6);
-    g_aircraft_map.entries[index].icao[6]   = '\0';
-    g_aircraft_map.entries[index].timestamp = 0;
-    g_aircraft_map.count++;
+    strncpy(g_aircraft_list.entries[index].icao, icao, 6);
+    g_aircraft_list.entries[index].icao[6]   = '\0';
+    g_aircraft_list.entries[index].timestamp = 0;
+    g_aircraft_list.count++;
 
-    return &g_aircraft_map.entries[index];
+    return &g_aircraft_list.entries[index];
 }
 
 void aircraft_position_update(const char *const icao, const double lat, const double lon, const int altitude_ft, const time_t timestamp) {
+
     const double distance = calculate_distance_nm(g_config.position_lat, g_config.position_lon, lat, lon);
 
-    if (!validate_position(lat, lon, altitude_ft, distance)) {
-        g_stats.position_invalid++;
+    if (!position_is_valid(lat, lon, altitude_ft, distance)) {
+        g_aircraft_stat.position_invalid++;
         if (g_config.debug)
-            printf("debug: aircraft position: invalid icao=%s, lat=%.6f, lon=%.6f, alt=%d, dist=%.1f\n", icao, lat, lon, altitude_ft, distance);
+            printf("debug: aircraft position: invalid (icao=%s, lat=%.6f, lon=%.6f, alt=%d, dist=%.1f)\n", icao, lat, lon, altitude_ft, distance);
         return;
     }
 
-    g_stats.position_valid++;
+    g_aircraft_stat.position_valid++;
 
-    pthread_mutex_lock(&g_aircraft_map.mutex);
-    aircraft_t *const aircraft = aircraft_find_or_create(icao);
+    pthread_mutex_lock(&g_aircraft_list.mutex);
+    aircraft_data_t *const aircraft = aircraft_find_or_create(icao);
     if (!aircraft) {
-        pthread_mutex_unlock(&g_aircraft_map.mutex);
+        pthread_mutex_unlock(&g_aircraft_list.mutex);
         printf("error: hash table full, cannot add %s\n", icao);
         return;
     }
     aircraft->last_seen = timestamp;
     if (aircraft->timestamp == 0 || distance > aircraft->distance) {
         if (g_config.debug && aircraft->timestamp != 0)
-            printf("debug: aircraft position: update icao=%s, dist %.1f -> %.1f nm\n", icao, aircraft->distance, distance);
+            printf("debug: aircraft position: update (icao=%s, dist %.1f -> %.1f nm)\n", icao, aircraft->distance, distance);
         aircraft->lat         = lat;
         aircraft->lon         = lon;
         aircraft->altitude_ft = altitude_ft;
         aircraft->distance    = distance;
         aircraft->timestamp   = timestamp;
     }
-    pthread_mutex_unlock(&g_aircraft_map.mutex);
+    pthread_mutex_unlock(&g_aircraft_list.mutex);
 
-    if (distance > g_stats.distance_max) {
-        g_stats.distance_max = distance;
-        strncpy(g_stats.distance_max_icao, icao, 6);
-        g_stats.distance_max_icao[6] = '\0';
+    if (distance > g_aircraft_stat.distance_max) {
+        g_aircraft_stat.distance_max = distance;
+        strncpy(g_aircraft_stat.distance_max_icao, icao, 6);
+        g_aircraft_stat.distance_max_icao[6] = '\0';
     }
 
-    if ((double)altitude_ft > g_stats.altitude_max) {
-        g_stats.altitude_max = (double)altitude_ft;
-        strncpy(g_stats.altitude_max_icao, icao, 6);
-        g_stats.altitude_max_icao[6] = '\0';
+    if ((double)altitude_ft > g_aircraft_stat.altitude_max) {
+        g_aircraft_stat.altitude_max = (double)altitude_ft;
+        strncpy(g_aircraft_stat.altitude_max_icao, icao, 6);
+        g_aircraft_stat.altitude_max_icao[6] = '\0';
     }
 }
 
 void aircraft_publish_mqtt(void) {
-    if (!g_mosq)
-        return;
-
     const time_t now = time(NULL);
-    char json_buffer[65536 * 2];
-    int offset                            = 0;
-    unsigned long updates                 = 0;
-    unsigned char published[MAX_AIRCRAFT] = { 0 };
+    char line_str[MAX_LINE_LENGTH];
+    char json_str[32768];
+    size_t json_off                           = 0;
+    unsigned long published_cnt               = 0;
+    unsigned char published_set[MAX_AIRCRAFT] = { 0 };
 
-    offset +=
-        snprintf(json_buffer + offset, sizeof(json_buffer) - (size_t)offset, "{\"timestamp\":%ld,\"position_lat\":%.6f,\"position_lon\":%.6f,\"aircraft\":[",
-                 time(NULL), g_config.position_lat, g_config.position_lon);
-
-    pthread_mutex_lock(&g_aircraft_map.mutex);
+    pthread_mutex_lock(&g_aircraft_list.mutex);
+    json_off +=
+        (size_t)snprintf(json_str + json_off, sizeof(json_str) - json_off, "{\"timestamp\":%ld,\"position_lat\":%.6f,\"position_lon\":%.6f,\"aircraft\":[", now,
+                         g_config.position_lat, g_config.position_lon);
     for (int i = 0; i < MAX_AIRCRAFT; i++)
-        if (g_aircraft_map.entries[i].icao[0] != '\0' && g_aircraft_map.entries[i].timestamp != 0 &&
-            g_aircraft_map.entries[i].published < g_aircraft_map.entries[i].timestamp) {
-            if (updates > 0)
-                offset += snprintf(json_buffer + offset, sizeof(json_buffer) - (size_t)offset, ",");
-            offset += snprintf(json_buffer + offset, sizeof(json_buffer) - (size_t)offset,
-                               "{\"icao\":\"%s\",\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld}", g_aircraft_map.entries[i].icao,
-                               g_aircraft_map.entries[i].lat, g_aircraft_map.entries[i].lon, g_aircraft_map.entries[i].altitude_ft,
-                               g_aircraft_map.entries[i].distance, g_aircraft_map.entries[i].timestamp);
-            updates++;
-            published[i]++;
-            if (offset > (int)sizeof(json_buffer) - 200)
+        if (g_aircraft_list.entries[i].icao[0] != '\0' && g_aircraft_list.entries[i].timestamp != 0 &&
+            g_aircraft_list.entries[i].published < g_aircraft_list.entries[i].timestamp) {
+            const size_t line_len = (size_t)snprintf(
+                line_str, sizeof(line_str), "%s{\"icao\":\"%s\",\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld}",
+                (published_cnt > 0 ? "," : ""), g_aircraft_list.entries[i].icao, g_aircraft_list.entries[i].lat, g_aircraft_list.entries[i].lon,
+                g_aircraft_list.entries[i].altitude_ft, g_aircraft_list.entries[i].distance, g_aircraft_list.entries[i].timestamp);
+            if (json_off + line_len >= ((int)sizeof(json_str) - 3))
                 break;
+            json_off += (size_t)snprintf(json_str + json_off, sizeof(json_str) - json_off, "%s", line_str);
+            published_cnt++;
+            published_set[i]++;
         }
-    pthread_mutex_unlock(&g_aircraft_map.mutex);
+    json_off += (size_t)snprintf(json_str + json_off, sizeof(json_str) - json_off, "]}");
+    pthread_mutex_unlock(&g_aircraft_list.mutex);
 
-    offset += snprintf(json_buffer + offset, sizeof(json_buffer) - (size_t)offset, "]}");
-    if (updates > 0) {
-        const int rc = mosquitto_publish(g_mosq, NULL, g_config.mqtt_topic, (int)strlen(json_buffer), json_buffer, 0, false);
+    if (published_cnt > 0) {
+        const int rc = mosquitto_publish(g_mosq, NULL, g_config.mqtt_topic, (int)json_off, json_str, 0, false);
         if (rc == MOSQ_ERR_SUCCESS) {
-            g_stats.published_mqtt += updates;
+            g_aircraft_stat.published_mqtt += published_cnt;
             for (int i = 0; i < MAX_AIRCRAFT; i++) // locking not needed
-                if (published[i] > 0)
-                    g_aircraft_map.entries[i].published = now;
+                if (published_set[i])
+                    g_aircraft_list.entries[i].published = now;
         } else
-            printf("mqtt: %lu aircraft updated publish failed: %s\n", updates, mosquitto_strerror(rc));
+            printf("mqtt: %lu aircraft updates, publish failed: %s\n", published_cnt, mosquitto_strerror(rc));
     }
 }
 
@@ -323,15 +317,18 @@ void aircraft_publish_mqtt(void) {
 // ---------------------------------------------------------------------------------------------------------------------
 
 bool adsb_parse_sbs_position(const char *const line, char *const icao, double *const lat, double *const lon, int *const altitude) {
-    char *fields[24];
+
     char buf[MAX_LINE_LENGTH];
     strncpy(buf, line, MAX_LINE_LENGTH - 1);
     buf[MAX_LINE_LENGTH - 1] = '\0';
+#define ADSB_MAX_FIELDS_DECODE 18
+#define ADSB_MIN_FIELDS_REQUIRED 16
 
+    char *fields[ADSB_MAX_FIELDS_DECODE];
     int i       = 0;
     char *p     = buf;
     char *start = p;
-    while (*p && i < 24) {
+    while (*p && i < ADSB_MAX_FIELDS_DECODE) { // can be up to 24
         if (*p == ',') {
             *p          = '\0';
             fields[i++] = start;
@@ -339,9 +336,9 @@ bool adsb_parse_sbs_position(const char *const line, char *const icao, double *c
         }
         p++;
     }
-    if (i < 24 && start < p)
+    if (i < ADSB_MAX_FIELDS_DECODE && start < p)
         fields[i++] = start;
-    if (i < 16)
+    if (i < ADSB_MIN_FIELDS_REQUIRED)
         return false;
 
     if (strcmp(fields[0], "MSG") != 0 || strcmp(fields[1], "3") != 0)
@@ -365,7 +362,7 @@ int adsb_connect(void) {
         return -1;
     const int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
-        printf("adsb: connection to %s:%d failed (socket): %s\n", g_config.adsb_host, g_config.adsb_port, strerror(errno));
+        printf("adsb: connection failed to %s:%d (socket): %s\n", g_config.adsb_host, g_config.adsb_port, strerror(errno));
         return -1;
     }
     struct sockaddr_in servaddr = {
@@ -374,11 +371,11 @@ int adsb_connect(void) {
         .sin_addr.s_addr = inet_addr(adsb_host),
     };
     if (connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
-        printf("adsb: connection to %s:%d failed (connect): %s\n", g_config.adsb_host, g_config.adsb_port, strerror(errno));
+        printf("adsb: connection failed to %s:%d (connect): %s\n", g_config.adsb_host, g_config.adsb_port, strerror(errno));
         close(sockfd);
         return -1;
     }
-    printf("adsb: connection to %s:%d succeeded\n", g_config.adsb_host, g_config.adsb_port);
+    printf("adsb: connection succeeded to %s:%d\n", g_config.adsb_host, g_config.adsb_port);
     return sockfd;
 }
 
@@ -418,13 +415,13 @@ void *adsb_processing_thread(void *arg __attribute__((unused))) {
                         printf("debug: adsb MSG,3: %s\n", line);
 
                     if (strncmp(line, "MSG", 3) == 0)
-                        g_stats.messages_total++;
+                        g_aircraft_stat.messages_total++;
 
                     char icao[7];
                     double lat, lon;
                     int altitude;
                     if (adsb_parse_sbs_position(line, icao, &lat, &lon, &altitude)) {
-                        g_stats.messages_position++;
+                        g_aircraft_stat.messages_position++;
                         aircraft_position_update(icao, lat, lon, altitude, time(NULL));
                     }
                     line_pos = 0;
@@ -434,7 +431,7 @@ void *adsb_processing_thread(void *arg __attribute__((unused))) {
         }
 
         const time_t now = time(NULL);
-        if (now - g_last_mqtt >= g_config.mqtt_interval) {
+        if (now - g_last_mqtt >= g_config.interval_mqtt) {
             aircraft_publish_mqtt();
             g_last_mqtt = now;
         }
@@ -452,9 +449,9 @@ void *adsb_processing_thread(void *arg __attribute__((unused))) {
 
 void mqtt_on_connect(struct mosquitto *mosq __attribute__((unused)), void *obj __attribute__((unused)), int rc) {
     if (rc == 0)
-        printf("mqtt: connection to %s:%d succeeded\n", g_config.mqtt_host, g_config.mqtt_port);
+        printf("mqtt: connection succeeded to %s:%d\n", g_config.mqtt_host, g_config.mqtt_port);
     else
-        printf("mqtt: connection to %s:%d failed (mosquitto error): %s\n", g_config.mqtt_host, g_config.mqtt_port, mosquitto_strerror(rc));
+        printf("mqtt: connection failed to %s:%d (mosquitto_connect): %s\n", g_config.mqtt_host, g_config.mqtt_port, mosquitto_strerror(rc));
 }
 
 bool mqtt_begin(void) {
@@ -465,13 +462,13 @@ bool mqtt_begin(void) {
     g_mosq = mosquitto_new(DEFAULT_MQTT_CLIENT_ID, true, NULL);
     if (!g_mosq) {
         mosquitto_lib_cleanup();
-        printf("mqtt: connection to %s:%d failed (could not create mosquitto instance)\n", g_config.mqtt_host, g_config.mqtt_port);
+        printf("mqtt: connection failed to %s:%d (mosquitto_new)\n", g_config.mqtt_host, g_config.mqtt_port);
         return false;
     }
     mosquitto_connect_callback_set(g_mosq, mqtt_on_connect);
     const int rc = mosquitto_connect(g_mosq, mqtt_host, g_config.mqtt_port, 60);
     if (rc != MOSQ_ERR_SUCCESS) {
-        printf("mqtt: connection to %s:%d failed (mosquitto error): %s\n", g_config.mqtt_host, g_config.mqtt_port, mosquitto_strerror(rc));
+        printf("mqtt: connection failed to %s:%d (mosquitto_connect): %s\n", g_config.mqtt_host, g_config.mqtt_port, mosquitto_strerror(rc));
         return false;
     }
     mosquitto_loop_start(g_mosq);
@@ -489,11 +486,20 @@ void mqtt_end(void) {
 // ---------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------
 
+void print_config(void) {
+    printf("config: adsb=%s:%d, mqtt=%s:%d, mqtt-topic=%s, mqtt-interval=%lus, status-interval=%lus, distance-max=%.0fnm, altitude=max=%.0fft, "
+           "position=%.6f,%0.6f, debug=%s\n",
+           g_config.adsb_host, g_config.adsb_port, g_config.mqtt_host, g_config.mqtt_port, g_config.mqtt_topic, g_config.interval_mqtt,
+           g_config.interval_status, g_config.distance_max_nm, g_config.altitude_max_ft, g_config.position_lat, g_config.position_lon,
+           g_config.debug ? "yes" : "no");
+}
+
 void print_status(void) {
     printf(
         "status: messages=%lu, positions=%lu (valid=%lu, invalid=%lu), aircraft=%d, distance-max=%.1fnm (%s), altitude-max=%.0fft (%s), published-mqtt=%lu\n",
-        g_stats.messages_total, g_stats.messages_position, g_stats.position_valid, g_stats.position_invalid, g_aircraft_map.count, g_stats.distance_max,
-        g_stats.distance_max_icao, g_stats.altitude_max, g_stats.altitude_max_icao, g_stats.published_mqtt);
+        g_aircraft_stat.messages_total, g_aircraft_stat.messages_position, g_aircraft_stat.position_valid, g_aircraft_stat.position_invalid,
+        g_aircraft_list.count, g_aircraft_stat.distance_max, g_aircraft_stat.distance_max_icao, g_aircraft_stat.altitude_max, g_aircraft_stat.altitude_max_icao,
+        g_aircraft_stat.published_mqtt);
     fflush(stdout);
 }
 
@@ -555,15 +561,15 @@ int parse_options(const int argc, char *const argv[]) {
             g_config.mqtt_topic[sizeof(g_config.mqtt_topic) - 1] = '\0';
             break;
         case 'i':
-            g_config.mqtt_interval = atoi(optarg);
-            if (g_config.mqtt_interval <= 0) {
+            g_config.interval_mqtt = atoi(optarg);
+            if (g_config.interval_mqtt <= 0) {
                 fprintf(stderr, "invalid mqtt interval: %s\n", optarg);
                 return -1;
             }
             break;
         case 's':
-            g_config.status_interval = atoi(optarg);
-            if (g_config.status_interval <= 0) {
+            g_config.interval_status = atoi(optarg);
+            if (g_config.interval_status <= 0) {
                 fprintf(stderr, "invalid status interval: %s\n", optarg);
                 return -1;
             }
@@ -624,17 +630,13 @@ int main(const int argc, char *const argv[]) {
     if (r != 0)
         return r;
 
-    printf("config: adsb=%s:%d, mqtt=%s:%d, mqtt-topic=%s, mqtt-interval=%ds, status-interval=%ds, distance-max=%.0fnm, altitude=max=%.0fft, "
-           "position=%.6f,%0.6f, debug=%s\n",
-           g_config.adsb_host, g_config.adsb_port, g_config.mqtt_host, g_config.mqtt_port, g_config.mqtt_topic, g_config.mqtt_interval,
-           g_config.status_interval, g_config.distance_max_nm, g_config.altitude_max_ft, g_config.position_lat, g_config.position_lon,
-           g_config.debug ? "yes" : "no");
+    print_config();
 
     g_last_status = time(NULL);
     g_last_mqtt   = time(NULL);
     if (!mqtt_begin())
         return 1;
-    pthread_mutex_init(&g_aircraft_map.mutex, NULL);
+    pthread_mutex_init(&g_aircraft_list.mutex, NULL);
     pthread_t processing_thread;
     if (pthread_create(&processing_thread, NULL, adsb_processing_thread, NULL) != 0) {
         perror("pthread_create");
@@ -646,7 +648,7 @@ int main(const int argc, char *const argv[]) {
     signal(SIGPIPE, SIG_IGN); // Ignore broken pipe
     while (g_running) {
         const time_t now = time(NULL);
-        if (now - g_last_status >= g_config.status_interval) {
+        if (now - g_last_status >= g_config.interval_status) {
             print_status();
             g_last_status = now;
         }
@@ -655,7 +657,7 @@ int main(const int argc, char *const argv[]) {
 
     pthread_join(processing_thread, NULL);
     mqtt_end();
-    pthread_mutex_destroy(&g_aircraft_map.mutex);
+    pthread_mutex_destroy(&g_aircraft_list.mutex);
 
     print_status();
     return 0;
