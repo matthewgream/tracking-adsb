@@ -1,0 +1,14 @@
+[Unit]
+Description=ADSB Analyser (to MQTT)
+After=adsb_analyser.service
+Requires=adsb_analyser.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/adsb_analyser
+ExecStart=/usr/local/bin/adsb_analyser $ADSB_ANALYSER_OPTIONS
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
