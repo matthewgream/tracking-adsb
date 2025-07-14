@@ -86,7 +86,7 @@ typedef struct {
     time_t timestamp;
     time_t last_seen;
     time_t published;
-    aircraft_posn_t min_lat_pos, max_lat_pos, min_lon_pos, max_lon_pos, min_alt_pos, max_alt_pos, min_dist_pos, max_dist_pos;
+    aircraft_posn_t min_lat_pos, max_lat_pos, min_lon_pos, max_lon_pos, min_alt_pos, max_alt_pos, min_dist_pos, max_dist_pos, first_seen_pos, last_seen_pos;
     bool bounds_initialised;
 } aircraft_data_t;
 
@@ -499,7 +499,9 @@ void aircraft_position_update(const char *const icao, const double lat, const do
     aircraft->altitude_ft = altitude_ft;
     aircraft->distance    = distance;
     aircraft->timestamp   = timestamp;
+    position_record_set(&aircraft->last_seen_pos, lat, lon, altitude_ft, distance, timestamp);
     if (!aircraft->bounds_initialised) {
+        position_record_set(&aircraft->first_seen_pos, lat, lon, altitude_ft, distance, timestamp);
         position_record_set(&aircraft->min_lat_pos, lat, lon, altitude_ft, distance, timestamp);
         position_record_set(&aircraft->max_lat_pos, lat, lon, altitude_ft, distance, timestamp);
         position_record_set(&aircraft->min_lon_pos, lat, lon, altitude_ft, distance, timestamp);
@@ -509,6 +511,8 @@ void aircraft_position_update(const char *const icao, const double lat, const do
         position_record_set(&aircraft->min_dist_pos, lat, lon, altitude_ft, distance, timestamp);
         position_record_set(&aircraft->max_dist_pos, lat, lon, altitude_ft, distance, timestamp);
         aircraft->bounds_initialised = true;
+        if (g_config.debug)
+            printf("debug: aircraft first seen: %s at %.6f,%.6f alt=%d dist=%.1fnm\n", icao, lat, lon, altitude_ft, distance);
     } else {
         if (lat < aircraft->min_lat_pos.lat)
             position_record_set(&aircraft->min_lat_pos, lat, lon, altitude_ft, distance, timestamp);
@@ -561,6 +565,8 @@ void aircraft_publish_mqtt(void) {
             const size_t line_len = (size_t)snprintf(
                 line_str, sizeof(line_str),
                 "%s{\"icao\":\"%s\",\"current\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                "\"first_seen\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                "\"last_seen\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
                 "\"bounds\":{"
                 "\"min_lat\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
                 "\"max_lat\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
@@ -571,7 +577,9 @@ void aircraft_publish_mqtt(void) {
                 "\"min_dist\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
                 "\"max_dist\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld}"
                 "}}",
-                (published_cnt > 0 ? "," : ""), ac->icao, ac->lat, ac->lon, ac->altitude_ft, ac->distance, ac->timestamp, ac->min_lat_pos.lat,
+                (published_cnt > 0 ? "," : ""), ac->icao, ac->lat, ac->lon, ac->altitude_ft, ac->distance, ac->timestamp, ac->first_seen_pos.lat,
+                ac->first_seen_pos.lon, ac->first_seen_pos.altitude_ft, ac->first_seen_pos.distance_nm, ac->first_seen_pos.timestamp, ac->last_seen_pos.lat,
+                ac->last_seen_pos.lon, ac->last_seen_pos.altitude_ft, ac->last_seen_pos.distance_nm, ac->last_seen_pos.timestamp, ac->min_lat_pos.lat,
                 ac->min_lat_pos.lon, ac->min_lat_pos.altitude_ft, ac->min_lat_pos.distance_nm, ac->min_lat_pos.timestamp, ac->max_lat_pos.lat,
                 ac->max_lat_pos.lon, ac->max_lat_pos.altitude_ft, ac->max_lat_pos.distance_nm, ac->max_lat_pos.timestamp, ac->min_lon_pos.lat,
                 ac->min_lon_pos.lon, ac->min_lon_pos.altitude_ft, ac->min_lon_pos.distance_nm, ac->min_lon_pos.timestamp, ac->max_lon_pos.lat,
