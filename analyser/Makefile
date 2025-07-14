@@ -31,7 +31,10 @@ clean:
 format:
 	clang-format -i $(SOURCES)
 
-.PHONY: clean format
+run:
+	bash -c 'source $(TARGET).default && ./$(TARGET) $$ADSB_ANALYSER_OPTIONS'
+
+.PHONY: clean format run
 
 ##
 
@@ -48,11 +51,13 @@ define install_service_systemd
 endef
 install_target: $(TARGET)
 	install -m 755 $(TARGET) $(INSTALL_DIR)
+install_default: $(TARGET).default
+	cp $(TARGET).default /etc/default/${TARGET}
 install_service: $(TARGET).service
 	$(call install_service_systemd,$(TARGET),$(TARGET))
-install: install_target install_service
+install: install_target install_default install_service
 restart:
 	systemctl restart $(TARGET)
-.PHONY: install install_target install_service
+.PHONY: install install_target install_default install_service
 .PHONY: restart
 
