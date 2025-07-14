@@ -205,6 +205,7 @@ static bool interval_wait(time_t *const last, const time_t interval) {
         *last = now;
     if ((now - *last) < interval)
         sleep((unsigned int)(interval - (now - *last)));
+    *last = time(NULL);
     return true;
 }
 
