@@ -360,26 +360,25 @@ bool adsb_parse_sbs_position(const char *const line, char *const icao, double *c
 }
 
 int adsb_connect(void) {
-    char resolved_ip[MAX_NAME_LENGTH];
-    if (!host_resolve(g_config.adsb_host, resolved_ip, sizeof(resolved_ip)))
+    char adsb_host[MAX_NAME_LENGTH];
+    if (!host_resolve(g_config.adsb_host, adsb_host, sizeof(adsb_host)))
         return -1;
-    printf("adsb: connecting to %s:%d\n", resolved_ip, g_config.adsb_port);
     const int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
-        printf("adsb: connection failure (socket): %s\n", strerror(errno));
+        printf("adsb: connection to %s:%d failed (socket): %s\n", g_config.adsb_host, g_config.adsb_port, strerror(errno));
         return -1;
     }
     struct sockaddr_in servaddr = {
         .sin_family      = AF_INET,
         .sin_port        = htons(g_config.adsb_port),
-        .sin_addr.s_addr = inet_addr(resolved_ip),
+        .sin_addr.s_addr = inet_addr(adsb_host),
     };
     if (connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
-        printf("adsb: connection failure (connect): %s\n", strerror(errno));
+        printf("adsb: connection to %s:%d failed (connect): %s\n", g_config.adsb_host, g_config.adsb_port, strerror(errno));
         close(sockfd);
         return -1;
     }
-    printf("adsb: connection success\n");
+    printf("adsb: connection to %s:%d succeeded\n", g_config.adsb_host, g_config.adsb_port);
     return sockfd;
 }
 
@@ -453,25 +452,26 @@ void *adsb_processing_thread(void *arg __attribute__((unused))) {
 
 void mqtt_on_connect(struct mosquitto *mosq __attribute__((unused)), void *obj __attribute__((unused)), int rc) {
     if (rc == 0)
-        printf("mqtt: connection success\n");
+        printf("mqtt: connection to %s:%d succeeded\n", g_config.mqtt_host, g_config.mqtt_port);
     else
-        printf("mqtt: connection failed: %s\n", mosquitto_strerror(rc));
+        printf("mqtt: connection to %s:%d failed (mosquitto error): %s\n", g_config.mqtt_host, g_config.mqtt_port, mosquitto_strerror(rc));
 }
 
 bool mqtt_begin(void) {
-    mosquitto_lib_init();
-    g_mosq = mosquitto_new(DEFAULT_MQTT_CLIENT_ID, true, NULL);
-    if (!g_mosq) {
-        fprintf(stderr, "failed to create mosquitto instance\n");
-        return false;
-    }
-    mosquitto_connect_callback_set(g_mosq, mqtt_on_connect);
     char mqtt_host[MAX_NAME_LENGTH];
     if (!host_resolve(g_config.mqtt_host, mqtt_host, sizeof(mqtt_host)))
         return false;
-    printf("mqtt: connecting to %s:%d\n", mqtt_host, g_config.mqtt_port);
-    if (mosquitto_connect(g_mosq, mqtt_host, g_config.mqtt_port, 60) != MOSQ_ERR_SUCCESS) {
-        fprintf(stderr, "mqtt: connection failed\n");
+    mosquitto_lib_init();
+    g_mosq = mosquitto_new(DEFAULT_MQTT_CLIENT_ID, true, NULL);
+    if (!g_mosq) {
+        mosquitto_lib_cleanup();
+        printf("mqtt: connection to %s:%d failed (could not create mosquitto instance)\n", g_config.mqtt_host, g_config.mqtt_port);
+        return false;
+    }
+    mosquitto_connect_callback_set(g_mosq, mqtt_on_connect);
+    const int rc = mosquitto_connect(g_mosq, mqtt_host, g_config.mqtt_port, 60);
+    if (rc != MOSQ_ERR_SUCCESS) {
+        printf("mqtt: connection to %s:%d failed (mosquitto error): %s\n", g_config.mqtt_host, g_config.mqtt_port, mosquitto_strerror(rc));
         return false;
     }
     mosquitto_loop_start(g_mosq);
@@ -479,9 +479,11 @@ bool mqtt_begin(void) {
 }
 
 void mqtt_end(void) {
-    mosquitto_loop_stop(g_mosq, true);
-    mosquitto_destroy(g_mosq);
-    mosquitto_lib_cleanup();
+    if (g_mosq) {
+        mosquitto_loop_stop(g_mosq, true);
+        mosquitto_destroy(g_mosq);
+        mosquitto_lib_cleanup();
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -531,7 +533,6 @@ const struct option long_options[] = { // defaults
 };
 
 int parse_options(const int argc, char *const argv[]) {
-
     int option_index = 0, c;
     while ((c = getopt_long(argc, argv, "hd", long_options, &option_index)) != -1) {
         switch (c) {
@@ -604,7 +605,6 @@ int parse_options(const int argc, char *const argv[]) {
             return -1;
         }
     }
-
     return 0;
 }
 
