@@ -46,6 +46,7 @@
 #define HASH_MASK (MAX_AIRCRAFT - 1)
 #define PRUNE_THRESHOLD 0.95
 #define PRUNE_RATIO 0.05
+#define LOOP_SLEEP 5
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------------------------
@@ -128,10 +129,10 @@ config_t g_config = { // defaults
 };
 aircraft_list_t g_aircraft_list = { 0 };
 aircraft_stat_t g_aircraft_stat = { 0 };
-volatile bool g_running         = true;
-time_t g_last_mqtt              = 0;
-time_t g_last_status            = 0;
-struct mosquitto *g_mosq        = NULL;
+volatile bool g_running;
+time_t g_last_mqtt       = 0;
+time_t g_last_status     = 0;
+struct mosquitto *g_mosq = NULL;
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------------------------
@@ -186,6 +187,25 @@ unsigned int hash_icao(const char *const icao) {
     for (int i = 0; i < 6 && icao[i]; i++)
         hash = hash * 31 + (unsigned int)icao[i];
     return hash & HASH_MASK;
+}
+
+static bool interval_passed(time_t *const last, const time_t interval) {
+    const time_t now = time(NULL);
+    if (*last == 0)
+        *last = now;
+    else if ((now - *last) >= interval) {
+        *last = now;
+        return true;
+    }
+    return false;
+}
+static bool interval_wait(time_t *const last, const time_t interval) {
+    const time_t now = time(NULL);
+    if (*last == 0)
+        *last = now;
+    if ((now - *last) < interval)
+        sleep((unsigned int)(interval - (now - *last)));
+    return true;
 }
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
@@ -276,11 +296,11 @@ bool voxel_map_save(void) {
     fwrite(&g_voxel_map.origin_lon, sizeof(g_voxel_map.origin_lon), 1, fp);
     fwrite(&g_voxel_map.max_radius_nm, sizeof(g_voxel_map.max_radius_nm), 1, fp);
     fwrite(&g_voxel_map.max_altitude_ft, sizeof(g_voxel_map.max_altitude_ft), 1, fp);
-    size_t written = fwrite(g_voxel_map.data, sizeof(voxel_data_t), g_voxel_map.total_voxels, fp);
+    const size_t wrote = fwrite(g_voxel_map.data, sizeof(voxel_data_t), g_voxel_map.total_voxels, fp);
 
     fclose(fp);
-    if (written != g_voxel_map.total_voxels) {
-        printf("voxel: map write file failed (wrote %zu of %zu voxels): %s\n", written, g_voxel_map.total_voxels, path);
+    if (wrote != g_voxel_map.total_voxels) {
+        printf("voxel: map write file failed (wrote %zu of %zu voxels): %s\n", wrote, g_voxel_map.total_voxels, path);
         return false;
     }
 
@@ -345,14 +365,9 @@ bool voxel_map_load(void) {
 void *voxel_save_thread(void *arg __attribute__((unused))) {
     if (g_config.debug)
         printf("voxel: map save file thread started\n");
-    while (g_running) {
-        sleep(15);
-        const time_t now = time(NULL);
-        if (now - g_voxel_map.last_save >= VOXEL_SAVE_INTERVAL) {
+    while (g_running)
+        if (interval_wait(&g_voxel_map.last_save, VOXEL_SAVE_INTERVAL))
             voxel_map_save();
-            g_voxel_map.last_save = now;
-        }
-    }
     voxel_map_save();
     if (g_config.debug)
         printf("voxel: map save file thread stopped\n");
@@ -726,11 +741,8 @@ void *adsb_processing_thread(void *arg __attribute__((unused))) {
                 line[line_pos++] = buffer[i];
         }
 
-        const time_t now = time(NULL);
-        if (now - g_last_mqtt >= g_config.interval_mqtt) {
+        if (interval_passed(&g_last_mqtt, g_config.interval_mqtt))
             aircraft_publish_mqtt();
-            g_last_mqtt = now;
-        }
     }
 
     adsb_disconnect(sockfd);
@@ -937,11 +949,8 @@ int main(const int argc, char *const argv[]) {
 
     print_config();
 
-    g_last_status = time(NULL);
-    g_last_mqtt   = time(NULL);
     if (!mqtt_begin())
         return 1;
-
     if (!voxel_map_begin())
         return 1;
 
@@ -955,14 +964,10 @@ int main(const int argc, char *const argv[]) {
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
     signal(SIGPIPE, SIG_IGN); // Ignore broken pipe
-    while (g_running) {
-        const time_t now = time(NULL);
-        if (now - g_last_status >= g_config.interval_status) {
+    g_running = true;
+    while (g_running)
+        if (interval_wait(&g_last_status, g_config.interval_status))
             print_status();
-            g_last_status = now;
-        }
-        sleep(1);
-    }
     print_status();
 
     pthread_join(processing_thread, NULL);
