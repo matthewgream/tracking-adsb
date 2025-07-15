@@ -80,15 +80,10 @@ typedef struct {
 
 typedef struct {
     char icao[7];
-    double lat;
-    double lon;
-    int altitude_ft;
-    double distance;
-    time_t timestamp;
-    time_t last_seen;
-    time_t published;
-    aircraft_posn_t min_lat_pos, max_lat_pos, min_lon_pos, max_lon_pos, min_alt_pos, max_alt_pos, min_dist_pos, max_dist_pos, first_seen_pos, last_seen_pos;
+    aircraft_posn_t pos, pos_first;
+    aircraft_posn_t min_lat_pos, max_lat_pos, min_lon_pos, max_lon_pos, min_alt_pos, max_alt_pos, min_dist_pos, max_dist_pos;
     bool bounds_initialised;
+    time_t published;
 } aircraft_data_t;
 
 typedef struct {
@@ -98,15 +93,18 @@ typedef struct {
 } aircraft_list_t;
 
 typedef struct {
+    char icao[7];
+    aircraft_posn_t pos;
+} aircraft_stat_posn_t;
+
+typedef struct {
     unsigned long messages_total;
     unsigned long messages_position;
     unsigned long position_valid;
     unsigned long position_invalid;
     unsigned long published_mqtt;
-    double distance_max;
-    char distance_max_icao[7];
-    double altitude_max;
-    char altitude_max_icao[7];
+    aircraft_stat_posn_t distance_max;
+    aircraft_stat_posn_t altitude_max;
 } aircraft_stat_t;
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
@@ -199,6 +197,7 @@ static bool interval_passed(time_t *const last, const time_t interval) {
     }
     return false;
 }
+
 static bool interval_wait(time_t *const last, const time_t interval) {
     const time_t now = time(NULL);
     if (*last == 0)
@@ -446,12 +445,19 @@ void position_record_set(aircraft_posn_t *const r, const double lat, const doubl
     r->timestamp   = timestamp;
 }
 
+void position_stat_record_set(aircraft_stat_posn_t *const r, const double lat, const double lon, const int altitude_ft, const double distance_nm,
+                              const time_t timestamp, const char *const icao) {
+    position_record_set(&r->pos, lat, lon, altitude_ft, distance_nm, timestamp);
+    strncpy(r->icao, icao, 6);
+    r->icao[6] = '\0';
+}
+
 aircraft_data_t *aircraft_find_or_create(const char *const icao) {
     unsigned int index = hash_icao(icao), index_original = index;
 
     while (g_aircraft_list.entries[index].icao[0] != '\0') {
         if (strcmp(g_aircraft_list.entries[index].icao, icao) == 0)
-            return &g_aircraft_list.entries[index]; // Found existing
+            return &g_aircraft_list.entries[index];
         if ((index = (index + 1) & HASH_MASK) == index_original)
             return NULL;
     }
@@ -465,8 +471,8 @@ aircraft_data_t *aircraft_find_or_create(const char *const icao) {
             int oldest_idx = -1;
             oldest_time    = time(NULL);
             for (int i = 0; i < MAX_AIRCRAFT; i++)
-                if (g_aircraft_list.entries[i].icao[0] != '\0' && g_aircraft_list.entries[i].last_seen < oldest_time) {
-                    oldest_time = g_aircraft_list.entries[i].last_seen;
+                if (g_aircraft_list.entries[i].icao[0] != '\0' && g_aircraft_list.entries[i].pos.timestamp < oldest_time) {
+                    oldest_time = g_aircraft_list.entries[i].pos.timestamp;
                     oldest_idx  = i;
                 }
             if (oldest_idx >= 0) {
@@ -480,7 +486,6 @@ aircraft_data_t *aircraft_find_or_create(const char *const icao) {
 
     strncpy(g_aircraft_list.entries[index].icao, icao, 6);
     g_aircraft_list.entries[index].icao[6]            = '\0';
-    g_aircraft_list.entries[index].timestamp          = 0;
     g_aircraft_list.entries[index].bounds_initialised = false;
     g_aircraft_list.count++;
 
@@ -489,12 +494,12 @@ aircraft_data_t *aircraft_find_or_create(const char *const icao) {
 
 void aircraft_position_update(const char *const icao, const double lat, const double lon, const int altitude_ft, const time_t timestamp) {
 
-    const double distance = calculate_distance_nm(g_config.position_lat, g_config.position_lon, lat, lon);
+    const double distance_nm = calculate_distance_nm(g_config.position_lat, g_config.position_lon, lat, lon);
 
-    if (!position_is_valid(lat, lon, altitude_ft, distance)) {
+    if (!position_is_valid(lat, lon, altitude_ft, distance_nm)) {
         g_aircraft_stat.position_invalid++;
         if (g_config.debug)
-            printf("debug: aircraft position: invalid (icao=%s, lat=%.6f, lon=%.6f, alt=%d, dist=%.1f)\n", icao, lat, lon, altitude_ft, distance);
+            printf("debug: aircraft position: invalid (icao=%s, lat=%.6f, lon=%.6f, alt=%d, dist=%.1f)\n", icao, lat, lon, altitude_ft, distance_nm);
         return;
     }
 
@@ -509,57 +514,45 @@ void aircraft_position_update(const char *const icao, const double lat, const do
         printf("error: hash table full, cannot add %s\n", icao);
         return;
     }
-    aircraft->last_seen   = timestamp;
-    aircraft->lat         = lat;
-    aircraft->lon         = lon;
-    aircraft->altitude_ft = altitude_ft;
-    aircraft->distance    = distance;
-    aircraft->timestamp   = timestamp;
-    position_record_set(&aircraft->last_seen_pos, lat, lon, altitude_ft, distance, timestamp);
+    position_record_set(&aircraft->pos, lat, lon, altitude_ft, distance_nm, timestamp);
     if (!aircraft->bounds_initialised) {
-        position_record_set(&aircraft->first_seen_pos, lat, lon, altitude_ft, distance, timestamp);
-        position_record_set(&aircraft->min_lat_pos, lat, lon, altitude_ft, distance, timestamp);
-        position_record_set(&aircraft->max_lat_pos, lat, lon, altitude_ft, distance, timestamp);
-        position_record_set(&aircraft->min_lon_pos, lat, lon, altitude_ft, distance, timestamp);
-        position_record_set(&aircraft->max_lon_pos, lat, lon, altitude_ft, distance, timestamp);
-        position_record_set(&aircraft->min_alt_pos, lat, lon, altitude_ft, distance, timestamp);
-        position_record_set(&aircraft->max_alt_pos, lat, lon, altitude_ft, distance, timestamp);
-        position_record_set(&aircraft->min_dist_pos, lat, lon, altitude_ft, distance, timestamp);
-        position_record_set(&aircraft->max_dist_pos, lat, lon, altitude_ft, distance, timestamp);
+        position_record_set(&aircraft->pos_first, lat, lon, altitude_ft, distance_nm, timestamp);
+        position_record_set(&aircraft->min_lat_pos, lat, lon, altitude_ft, distance_nm, timestamp);
+        position_record_set(&aircraft->max_lat_pos, lat, lon, altitude_ft, distance_nm, timestamp);
+        position_record_set(&aircraft->min_lon_pos, lat, lon, altitude_ft, distance_nm, timestamp);
+        position_record_set(&aircraft->max_lon_pos, lat, lon, altitude_ft, distance_nm, timestamp);
+        position_record_set(&aircraft->min_alt_pos, lat, lon, altitude_ft, distance_nm, timestamp);
+        position_record_set(&aircraft->max_alt_pos, lat, lon, altitude_ft, distance_nm, timestamp);
+        position_record_set(&aircraft->min_dist_pos, lat, lon, altitude_ft, distance_nm, timestamp);
+        position_record_set(&aircraft->max_dist_pos, lat, lon, altitude_ft, distance_nm, timestamp);
         aircraft->bounds_initialised = true;
         if (g_config.debug)
-            printf("debug: aircraft first seen: %s at %.6f,%.6f alt=%d dist=%.1fnm\n", icao, lat, lon, altitude_ft, distance);
+            printf("debug: aircraft first seen: %s at %.6f,%.6f alt=%d dist=%.1fnm\n", icao, lat, lon, altitude_ft, distance_nm);
     } else {
         if (lat < aircraft->min_lat_pos.lat)
-            position_record_set(&aircraft->min_lat_pos, lat, lon, altitude_ft, distance, timestamp);
+            position_record_set(&aircraft->min_lat_pos, lat, lon, altitude_ft, distance_nm, timestamp);
         if (lat > aircraft->max_lat_pos.lat)
-            position_record_set(&aircraft->max_lat_pos, lat, lon, altitude_ft, distance, timestamp);
+            position_record_set(&aircraft->max_lat_pos, lat, lon, altitude_ft, distance_nm, timestamp);
         if (lon < aircraft->min_lon_pos.lon)
-            position_record_set(&aircraft->min_lon_pos, lat, lon, altitude_ft, distance, timestamp);
+            position_record_set(&aircraft->min_lon_pos, lat, lon, altitude_ft, distance_nm, timestamp);
         if (lon > aircraft->max_lon_pos.lon)
-            position_record_set(&aircraft->max_lon_pos, lat, lon, altitude_ft, distance, timestamp);
+            position_record_set(&aircraft->max_lon_pos, lat, lon, altitude_ft, distance_nm, timestamp);
         if (altitude_ft < aircraft->min_alt_pos.altitude_ft)
-            position_record_set(&aircraft->min_alt_pos, lat, lon, altitude_ft, distance, timestamp);
+            position_record_set(&aircraft->min_alt_pos, lat, lon, altitude_ft, distance_nm, timestamp);
         if (altitude_ft > aircraft->max_alt_pos.altitude_ft)
-            position_record_set(&aircraft->max_alt_pos, lat, lon, altitude_ft, distance, timestamp);
-        if (distance < aircraft->min_dist_pos.distance_nm)
-            position_record_set(&aircraft->min_dist_pos, lat, lon, altitude_ft, distance, timestamp);
-        if (distance > aircraft->max_dist_pos.distance_nm)
-            position_record_set(&aircraft->max_dist_pos, lat, lon, altitude_ft, distance, timestamp);
+            position_record_set(&aircraft->max_alt_pos, lat, lon, altitude_ft, distance_nm, timestamp);
+        if (distance_nm < aircraft->min_dist_pos.distance_nm)
+            position_record_set(&aircraft->min_dist_pos, lat, lon, altitude_ft, distance_nm, timestamp);
+        if (distance_nm > aircraft->max_dist_pos.distance_nm)
+            position_record_set(&aircraft->max_dist_pos, lat, lon, altitude_ft, distance_nm, timestamp);
     }
     pthread_mutex_unlock(&g_aircraft_list.mutex);
 
-    if (distance > g_aircraft_stat.distance_max) {
-        g_aircraft_stat.distance_max = distance;
-        strncpy(g_aircraft_stat.distance_max_icao, icao, 6);
-        g_aircraft_stat.distance_max_icao[6] = '\0';
-    }
+    if (distance_nm > g_aircraft_stat.distance_max.pos.distance_nm)
+        position_stat_record_set(&g_aircraft_stat.distance_max, lat, lon, altitude_ft, distance_nm, timestamp, icao);
 
-    if ((double)altitude_ft > g_aircraft_stat.altitude_max) {
-        g_aircraft_stat.altitude_max = (double)altitude_ft;
-        strncpy(g_aircraft_stat.altitude_max_icao, icao, 6);
-        g_aircraft_stat.altitude_max_icao[6] = '\0';
-    }
+    if ((double)altitude_ft > g_aircraft_stat.altitude_max.pos.altitude_ft)
+        position_stat_record_set(&g_aircraft_stat.altitude_max, lat, lon, altitude_ft, distance_nm, timestamp, icao);
 }
 
 void aircraft_publish_mqtt(void) {
@@ -575,41 +568,39 @@ void aircraft_publish_mqtt(void) {
         (size_t)snprintf(json_str + json_off, sizeof(json_str) - json_off, "{\"timestamp\":%ld,\"position_lat\":%.6f,\"position_lon\":%.6f,\"aircraft\":[", now,
                          g_config.position_lat, g_config.position_lon);
     for (int i = 0; i < MAX_AIRCRAFT; i++)
-        if (g_aircraft_list.entries[i].icao[0] != '\0' && g_aircraft_list.entries[i].timestamp != 0 &&
-            g_aircraft_list.entries[i].published < g_aircraft_list.entries[i].timestamp && g_aircraft_list.entries[i].bounds_initialised) {
-            aircraft_data_t *ac   = &g_aircraft_list.entries[i];
-            const size_t line_len = (size_t)snprintf(
-                line_str, sizeof(line_str),
-                "%s{\"icao\":\"%s\",\"current\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
-                "\"first_seen\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
-                "\"last_seen\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
-                "\"bounds\":{"
-                "\"min_lat\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
-                "\"max_lat\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
-                "\"min_lon\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
-                "\"max_lon\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
-                "\"min_alt\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
-                "\"max_alt\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
-                "\"min_dist\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
-                "\"max_dist\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld}"
-                "}}",
-                (published_cnt > 0 ? "," : ""), ac->icao, ac->lat, ac->lon, ac->altitude_ft, ac->distance, ac->timestamp, ac->first_seen_pos.lat,
-                ac->first_seen_pos.lon, ac->first_seen_pos.altitude_ft, ac->first_seen_pos.distance_nm, ac->first_seen_pos.timestamp, ac->last_seen_pos.lat,
-                ac->last_seen_pos.lon, ac->last_seen_pos.altitude_ft, ac->last_seen_pos.distance_nm, ac->last_seen_pos.timestamp, ac->min_lat_pos.lat,
-                ac->min_lat_pos.lon, ac->min_lat_pos.altitude_ft, ac->min_lat_pos.distance_nm, ac->min_lat_pos.timestamp, ac->max_lat_pos.lat,
-                ac->max_lat_pos.lon, ac->max_lat_pos.altitude_ft, ac->max_lat_pos.distance_nm, ac->max_lat_pos.timestamp, ac->min_lon_pos.lat,
-                ac->min_lon_pos.lon, ac->min_lon_pos.altitude_ft, ac->min_lon_pos.distance_nm, ac->min_lon_pos.timestamp, ac->max_lon_pos.lat,
-                ac->max_lon_pos.lon, ac->max_lon_pos.altitude_ft, ac->max_lon_pos.distance_nm, ac->max_lon_pos.timestamp, ac->min_alt_pos.lat,
-                ac->min_alt_pos.lon, ac->min_alt_pos.altitude_ft, ac->min_alt_pos.distance_nm, ac->min_alt_pos.timestamp, ac->max_alt_pos.lat,
-                ac->max_alt_pos.lon, ac->max_alt_pos.altitude_ft, ac->max_alt_pos.distance_nm, ac->max_alt_pos.timestamp, ac->min_dist_pos.lat,
-                ac->min_dist_pos.lon, ac->min_dist_pos.altitude_ft, ac->min_dist_pos.distance_nm, ac->min_dist_pos.timestamp, ac->max_dist_pos.lat,
-                ac->max_dist_pos.lon, ac->max_dist_pos.altitude_ft, ac->max_dist_pos.distance_nm, ac->max_dist_pos.timestamp);
-            if (json_off + line_len >= ((int)sizeof(json_str) - 3))
-                break;
-            json_off += (size_t)snprintf(json_str + json_off, sizeof(json_str) - json_off, "%s", line_str);
-            published_cnt++;
-            published_set[i]++;
-        }
+        if (g_aircraft_list.entries[i].icao[0] != '\0')
+            if (g_aircraft_list.entries[i].published < g_aircraft_list.entries[i].pos.timestamp && g_aircraft_list.entries[i].bounds_initialised) {
+                aircraft_data_t *ac   = &g_aircraft_list.entries[i];
+                const size_t line_len = (size_t)snprintf(
+                    line_str, sizeof(line_str),
+                    "%s{\"icao\":\"%s\",\"current\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                    "\"first\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                    "\"bounds\":{"
+                    "\"min_lat\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                    "\"max_lat\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                    "\"min_lon\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                    "\"max_lon\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                    "\"min_alt\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                    "\"max_alt\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                    "\"min_dist\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld},"
+                    "\"max_dist\":{\"lat\":%.6f,\"lon\":%.6f,\"alt\":%d,\"dist\":%.2f,\"time\":%ld}"
+                    "}}",
+                    (published_cnt > 0 ? "," : ""), ac->icao, ac->pos.lat, ac->pos.lon, ac->pos.altitude_ft, ac->pos.distance_nm, ac->pos.timestamp,
+                    ac->pos_first.lat, ac->pos_first.lon, ac->pos_first.altitude_ft, ac->pos_first.distance_nm, ac->pos_first.timestamp, ac->min_lat_pos.lat,
+                    ac->min_lat_pos.lon, ac->min_lat_pos.altitude_ft, ac->min_lat_pos.distance_nm, ac->min_lat_pos.timestamp, ac->max_lat_pos.lat,
+                    ac->max_lat_pos.lon, ac->max_lat_pos.altitude_ft, ac->max_lat_pos.distance_nm, ac->max_lat_pos.timestamp, ac->min_lon_pos.lat,
+                    ac->min_lon_pos.lon, ac->min_lon_pos.altitude_ft, ac->min_lon_pos.distance_nm, ac->min_lon_pos.timestamp, ac->max_lon_pos.lat,
+                    ac->max_lon_pos.lon, ac->max_lon_pos.altitude_ft, ac->max_lon_pos.distance_nm, ac->max_lon_pos.timestamp, ac->min_alt_pos.lat,
+                    ac->min_alt_pos.lon, ac->min_alt_pos.altitude_ft, ac->min_alt_pos.distance_nm, ac->min_alt_pos.timestamp, ac->max_alt_pos.lat,
+                    ac->max_alt_pos.lon, ac->max_alt_pos.altitude_ft, ac->max_alt_pos.distance_nm, ac->max_alt_pos.timestamp, ac->min_dist_pos.lat,
+                    ac->min_dist_pos.lon, ac->min_dist_pos.altitude_ft, ac->min_dist_pos.distance_nm, ac->min_dist_pos.timestamp, ac->max_dist_pos.lat,
+                    ac->max_dist_pos.lon, ac->max_dist_pos.altitude_ft, ac->max_dist_pos.distance_nm, ac->max_dist_pos.timestamp);
+                if (json_off + line_len >= ((int)sizeof(json_str) - 3))
+                    break;
+                json_off += (size_t)snprintf(json_str + json_off, sizeof(json_str) - json_off, "%s", line_str);
+                published_cnt++;
+                published_set[i]++;
+            }
     json_off += (size_t)snprintf(json_str + json_off, sizeof(json_str) - json_off, "]}");
     pthread_mutex_unlock(&g_aircraft_list.mutex);
 
@@ -629,7 +620,6 @@ void aircraft_publish_mqtt(void) {
 // -----------------------------------------------------------------------------------------------------------------------------------------
 
 bool adsb_parse_sbs_position(const char *const line, char *const icao, double *const lat, double *const lon, int *const altitude) {
-
     char buf[MAX_LINE_LENGTH];
     strncpy(buf, line, MAX_LINE_LENGTH - 1);
     buf[MAX_LINE_LENGTH - 1] = '\0';
@@ -697,7 +687,6 @@ void adsb_disconnect(const int sockfd) {
 }
 
 void *adsb_processing_thread(void *arg __attribute__((unused))) {
-
     int line_pos = 0;
     char line[MAX_LINE_LENGTH];
 
@@ -725,7 +714,6 @@ void *adsb_processing_thread(void *arg __attribute__((unused))) {
 
                     if (g_config.debug && strncmp(line, "MSG,3", 5) == 0)
                         printf("debug: adsb MSG,3: %s\n", line);
-
                     if (strncmp(line, "MSG", 3) == 0)
                         g_aircraft_stat.messages_total++;
 
@@ -806,8 +794,8 @@ void print_config(void) {
 void print_status(void) {
     printf("status: messages=%lu, positions=%lu (valid=%lu, invalid=%lu), aircraft=%d, distance-max=%.1fnm (%s), altitude-max=%.0fft (%s), published-mqtt=%lu",
            g_aircraft_stat.messages_total, g_aircraft_stat.messages_position, g_aircraft_stat.position_valid, g_aircraft_stat.position_invalid,
-           g_aircraft_list.count, g_aircraft_stat.distance_max, g_aircraft_stat.distance_max_icao, g_aircraft_stat.altitude_max,
-           g_aircraft_stat.altitude_max_icao, g_aircraft_stat.published_mqtt);
+           g_aircraft_list.count, g_aircraft_stat.distance_max.pos.distance_nm, g_aircraft_stat.distance_max.icao,
+           (double)g_aircraft_stat.altitude_max.pos.altitude_ft, g_aircraft_stat.altitude_max.icao, g_aircraft_stat.published_mqtt);
     size_t voxel_occupied = 0, voxel_total = 0;
     double voxel_occupancy = 0.0;
     if (voxel_get_stats(&voxel_occupied, &voxel_total, &voxel_occupancy))
