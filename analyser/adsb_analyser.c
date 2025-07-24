@@ -127,10 +127,10 @@ config_t g_config = { // defaults
 };
 aircraft_list_t g_aircraft_list = { 0 };
 aircraft_stat_t g_aircraft_stat = { 0 };
-volatile bool g_running  = true;
-time_t g_last_mqtt       = 0;
-time_t g_last_status     = 0;
-struct mosquitto *g_mosq = NULL;
+volatile bool g_running         = true;
+time_t g_last_mqtt              = 0;
+time_t g_last_status            = 0;
+struct mosquitto *g_mosq        = NULL;
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------------------------
@@ -627,9 +627,9 @@ bool adsb_parse_sbs_position(const char *const line, char *const icao, double *c
 #define ADSB_MIN_FIELDS_REQUIRED 16
 
     char *fields[ADSB_MAX_FIELDS_DECODE];
-    int i       = 0;
-    char *p     = buf;
-    char *start = p;
+    unsigned int i = 0;
+    char *p        = buf;
+    char *start    = p;
     while (*p && i < ADSB_MAX_FIELDS_DECODE) { // can be up to 24
         if (*p == ',') {
             *p          = '\0';
@@ -953,7 +953,6 @@ int main(const int argc, char *const argv[]) {
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
     signal(SIGPIPE, SIG_IGN); // Ignore broken pipe
-    g_running = true;
     while (g_running)
         if (interval_wait(&g_last_status, g_config.interval_status))
             print_status();
