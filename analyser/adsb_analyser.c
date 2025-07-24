@@ -198,14 +198,17 @@ static bool interval_passed(time_t *const last, const time_t interval) {
     return false;
 }
 
-static bool interval_wait(time_t *const last, const time_t interval) {
+static bool interval_wait(time_t *const last, const time_t interval, volatile bool *running) {
     const time_t now = time(NULL);
     if (*last == 0)
         *last = now;
-    if ((now - *last) < interval)
-        sleep((unsigned int)(interval - (now - *last)));
+    if ((now - *last) < interval && *running) {
+        time_t remain = interval - (now - *last);
+        while (remain-- > 0 && *running)
+            sleep(1);
+    }
     *last = time(NULL);
-    return true;
+    return *running;
 }
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
@@ -365,9 +368,8 @@ bool voxel_map_load(void) {
 void *voxel_save_thread(void *arg __attribute__((unused))) {
     if (g_config.debug)
         printf("voxel: map save file thread started\n");
-    while (g_running)
-        if (interval_wait(&g_voxel_map.last_save, VOXEL_SAVE_INTERVAL))
-            voxel_map_save();
+    while (interval_wait(&g_voxel_map.last_save, VOXEL_SAVE_INTERVAL, &g_running))
+        voxel_map_save();
     voxel_map_save();
     if (g_config.debug)
         printf("voxel: map save file thread stopped\n");
@@ -953,9 +955,8 @@ int main(const int argc, char *const argv[]) {
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
     signal(SIGPIPE, SIG_IGN); // Ignore broken pipe
-    while (g_running)
-        if (interval_wait(&g_last_status, g_config.interval_status))
-            print_status();
+    while (interval_wait(&g_last_status, g_config.interval_status, &g_running))
+        print_status();
     print_status();
 
     pthread_join(processing_thread, NULL);
