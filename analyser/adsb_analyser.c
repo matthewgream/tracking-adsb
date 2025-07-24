@@ -187,7 +187,7 @@ unsigned int hash_icao(const char *const icao) {
     return hash & HASH_MASK;
 }
 
-static bool interval_passed(time_t *const last, const time_t interval) {
+static bool interval_past(time_t *const last, const time_t interval) {
     const time_t now = time(NULL);
     if (*last == 0)
         *last = now;
@@ -621,41 +621,49 @@ void aircraft_publish_mqtt(void) {
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------------------------
 
-bool adsb_parse_sbs_position(const char *const line, char *const icao, double *const lat, double *const lon, int *const altitude) {
-    char buf[MAX_LINE_LENGTH];
-    strncpy(buf, line, MAX_LINE_LENGTH - 1);
-    buf[MAX_LINE_LENGTH - 1] = '\0';
+bool adsb_parse_sbs_position(const char *const line, char *const icao, double *const lat, double *const lon, int *const alt) {
 #define ADSB_MAX_FIELDS_DECODE 18
 #define ADSB_MIN_FIELDS_REQUIRED 16
 
-    char *fields[ADSB_MAX_FIELDS_DECODE];
+    const char *fields[ADSB_MAX_FIELDS_DECODE], *fields_end[ADSB_MAX_FIELDS_DECODE];
     unsigned int i = 0;
-    char *p        = buf;
-    char *start    = p;
-    while (*p && i < ADSB_MAX_FIELDS_DECODE) { // can be up to 24
-        if (*p == ',') {
-            *p          = '\0';
-            fields[i++] = start;
-            start       = p + 1;
+
+    const char *p = line, *start = p;
+    while (*p && i < ADSB_MAX_FIELDS_DECODE) {
+        if (*p == ',' || *p == '\n' || *p == '\r' || *p == '\0') {
+            fields[i]     = start;
+            fields_end[i] = p;
+            i++;
+            if (*p == '\0')
+                break;
+            start = p + 1;
         }
         p++;
     }
-    if (i < ADSB_MAX_FIELDS_DECODE && start < p)
-        fields[i++] = start;
+    if (i < ADSB_MAX_FIELDS_DECODE && start < p && p[-1] != ',') {
+        fields[i]     = start;
+        fields_end[i] = p;
+        i++;
+    }
+
     if (i < ADSB_MIN_FIELDS_REQUIRED)
         return false;
-
-    if (strcmp(fields[0], "MSG") != 0 || strcmp(fields[1], "3") != 0)
+    if (fields_end[0] - fields[0] != 3 || strncmp(fields[0], "MSG", 3) != 0)
+        return false;
+    if (fields_end[1] - fields[1] != 1 || *fields[1] != '3')
+        return false;
+    if (fields[14] == fields_end[14] || fields[15] == fields_end[15])
         return false;
 
-    if (strlen(fields[14]) == 0 || strlen(fields[15]) == 0)
-        return false;
+    size_t icao_len = (size_t)fields_end[4] - (size_t)fields[4];
+    if (icao_len > 6)
+        icao_len = 6;
+    memcpy(icao, fields[4], icao_len);
+    icao[icao_len] = '\0';
 
-    strncpy(icao, fields[4], 6);
-    icao[6]   = '\0';
-    *lat      = atof(fields[14]);
-    *lon      = atof(fields[15]);
-    *altitude = (fields[11] && strlen(fields[11]) > 0) ? atoi(fields[11]) : 0;
+    *lat = strtod(fields[14], NULL);
+    *lon = strtod(fields[15], NULL);
+    *alt = (fields[11] < fields_end[11]) ? (int)strtol(fields[11], NULL, 10) : 0;
 
     return true;
 }
@@ -702,17 +710,15 @@ void *adsb_processing_thread(void *arg __attribute__((unused))) {
 
         char buffer[MAX_LINE_LENGTH];
         const ssize_t n = recv(sockfd, buffer, sizeof(buffer) - 1, 0);
-        if (n <= 0) {
-            if (n < 0)
-                perror("recv");
+        if (n <= 0)
             continue;
-        }
 
         buffer[n] = '\0';
         for (int i = 0; i < n; i++) {
             if (buffer[i] == '\n' || buffer[i] == '\r') {
                 if (line_pos > 0) {
                     line[line_pos] = '\0';
+                    line_pos       = 0;
 
                     if (g_config.debug && strncmp(line, "MSG,3", 5) == 0)
                         printf("debug: adsb MSG,3: %s\n", line);
@@ -726,13 +732,12 @@ void *adsb_processing_thread(void *arg __attribute__((unused))) {
                         g_aircraft_stat.messages_position++;
                         aircraft_position_update(icao, lat, lon, altitude, time(NULL));
                     }
-                    line_pos = 0;
                 }
             } else if (line_pos < MAX_LINE_LENGTH - 1)
                 line[line_pos++] = buffer[i];
         }
 
-        if (interval_passed(&g_last_mqtt, g_config.interval_mqtt))
+        if (interval_past(&g_last_mqtt, g_config.interval_mqtt))
             aircraft_publish_mqtt();
     }
 
@@ -742,6 +747,17 @@ void *adsb_processing_thread(void *arg __attribute__((unused))) {
 
     return NULL;
 }
+
+pthread_t adsb_processing_thread_handle;
+
+bool adsb_processing_begin(void) {
+    if (pthread_create(&adsb_processing_thread_handle, NULL, adsb_processing_thread, NULL) != 0) {
+        perror("pthread_create");
+        return false;
+    }
+    return true;
+}
+void adsb_processing_end(void) { pthread_join(adsb_processing_thread_handle, NULL); }
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------------------------
@@ -767,6 +783,8 @@ bool mqtt_begin(void) {
     mosquitto_connect_callback_set(g_mosq, mqtt_on_connect);
     const int rc = mosquitto_connect(g_mosq, mqtt_host, g_config.mqtt_port, 60);
     if (rc != MOSQ_ERR_SUCCESS) {
+        mosquitto_destroy(g_mosq);
+        mosquitto_lib_cleanup();
         printf("mqtt: connection failed to %s:%d (mosquitto_connect): %s\n", g_config.mqtt_host, g_config.mqtt_port, mosquitto_strerror(rc));
         return false;
     }
@@ -778,6 +796,7 @@ void mqtt_end(void) {
     if (g_mosq) {
         mosquitto_loop_stop(g_mosq, true);
         mosquitto_destroy(g_mosq);
+        g_mosq = NULL;
         mosquitto_lib_cleanup();
     }
 }
@@ -937,20 +956,18 @@ int main(const int argc, char *const argv[]) {
     const int r = parse_options(argc, argv);
     if (r != 0)
         return r;
-
     print_config();
 
-    if (!mqtt_begin())
-        return 1;
     if (!voxel_map_begin())
         return 1;
-
-    pthread_mutex_init(&g_aircraft_list.mutex, NULL);
-    pthread_t processing_thread;
-    if (pthread_create(&processing_thread, NULL, adsb_processing_thread, NULL) != 0) {
-        perror("pthread_create");
+    if (!mqtt_begin())
+        return 1;
+    if (pthread_mutex_init(&g_aircraft_list.mutex, NULL) != 0) {
+        perror("pthread_mutex_init");
         return 1;
     }
+    if (!adsb_processing_begin())
+        return 1;
 
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
@@ -959,9 +976,9 @@ int main(const int argc, char *const argv[]) {
         print_status();
     print_status();
 
-    pthread_join(processing_thread, NULL);
-    mqtt_end();
+    adsb_processing_end();
     pthread_mutex_destroy(&g_aircraft_list.mutex);
+    mqtt_end();
     voxel_map_end();
 
     return 0;
