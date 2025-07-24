@@ -127,7 +127,7 @@ config_t g_config = { // defaults
 };
 aircraft_list_t g_aircraft_list = { 0 };
 aircraft_stat_t g_aircraft_stat = { 0 };
-volatile bool g_running;
+volatile bool g_running  = true;
 time_t g_last_mqtt       = 0;
 time_t g_last_status     = 0;
 struct mosquitto *g_mosq = NULL;
@@ -703,7 +703,7 @@ void *adsb_processing_thread(void *arg __attribute__((unused))) {
         if (n <= 0) {
             if (n < 0)
                 perror("recv");
-            break;
+            continue;
         }
 
         buffer[n] = '\0';
