@@ -19,6 +19,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#define MAX(a,b) ((a)>(b)?(a):(b))
+
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------------------------
 
@@ -47,6 +49,9 @@
 #define PRUNE_THRESHOLD 0.95
 #define PRUNE_RATIO 0.05
 #define LOOP_SLEEP 5
+#define MAX_CONSECUTIVE_ERRORS 10
+#define MESSAGE_TIMEOUT 300
+#define CONNECTION_RETRY_PERIOD 5
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------------------------
@@ -270,9 +275,9 @@ void voxel_map_update(const double lat, const double lon, const double altitude_
         return;
     int x, y, z;
     voxel_coords_to_indices(lat, lon, altitude_ft, &x, &y, &z);
-    const size_t idx = voxel_indices_to_index(x, y, z);
-    if (g_voxel_map.data[idx] < VOXEL_MAX_COUNT)
-        if (g_voxel_map.data[idx]++ == 0 && g_config.debug)
+    const size_t i = voxel_indices_to_index(x, y, z);
+    if (g_voxel_map.data[i] < VOXEL_MAX_COUNT)
+        if (g_voxel_map.data[i]++ == 0 && g_config.debug)
             printf("debug: voxel: created [%d,%d,%d] (%.1fnm, %.1fnm, %.0fft)\n", x, y, z, (x - g_voxel_map.size_x / 2) * VOXEL_SIZE_HORIZONTAL_NM,
                    (y - g_voxel_map.size_y / 2) * VOXEL_SIZE_HORIZONTAL_NM, z * VOXEL_SIZE_VERTICAL_FT);
 }
@@ -431,8 +436,7 @@ bool voxel_get_stats(size_t *occupied, size_t *total, double *occupancy) {
 bool coordinates_are_valid(const double lat, const double lon) { return (lat >= -90.0 && lat <= 90.0 && lon >= -180.0 && lon <= 180.0); }
 
 bool position_is_valid(const double lat, const double lon, const int altitude_ft, const double distance_nm) {
-    return (lat >= -90.0 && lat <= 90.0 && lon >= -180.0 && lon <= 180.0) &&
-           (altitude_ft >= DEFAULT_ALTITUDE_MIN_FT && altitude_ft <= g_config.altitude_max_ft) && (distance_nm <= g_config.distance_max_nm);
+    return coordinates_are_valid (lat, lon) && (altitude_ft >= DEFAULT_ALTITUDE_MIN_FT && altitude_ft <= g_config.altitude_max_ft) && (distance_nm <= g_config.distance_max_nm);
 }
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
@@ -687,6 +691,11 @@ int adsb_connect(void) {
         close(sockfd);
         return -1;
     }
+    struct timeval tv;
+    tv.tv_sec  = 30;
+    tv.tv_usec = 0;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
+        printf("adsb: warning: failed to set receive timeout: %s\n", strerror(errno));
     printf("adsb: connection succeeded to %s:%d\n", g_config.adsb_host, g_config.adsb_port);
     return sockfd;
 }
@@ -699,19 +708,53 @@ void adsb_disconnect(const int sockfd) {
 void *adsb_processing_thread(void *arg __attribute__((unused))) {
     int line_pos = 0;
     char line[MAX_LINE_LENGTH];
-
-    const int sockfd = adsb_connect();
-    if (sockfd < 0)
-        return NULL;
+    int sockfd               = -1;
+    int consecutive_errors   = 0;
+    time_t last_message_time = time(NULL);
 
     printf("analyser: started\n");
 
     while (g_running) {
 
+        if (interval_past(&last_message_time, MESSAGE_TIMEOUT) && sockfd >= 0) {
+            printf("adsb: no messages received for %d minutes, reconnecting...\n", MESSAGE_TIMEOUT / 60);
+            adsb_disconnect(sockfd);
+            sockfd = -1;
+        }
+
+        if (sockfd < 0) {
+            if ((sockfd = adsb_connect()) < 0) {
+                printf("adsb: connection failed, retrying in %d seconds...\n", CONNECTION_RETRY_PERIOD);
+                sleep(CONNECTION_RETRY_PERIOD);
+                continue;
+            }
+            consecutive_errors = 0;
+            line_pos           = 0;
+        }
+
         char buffer[MAX_LINE_LENGTH];
         const ssize_t n = recv(sockfd, buffer, sizeof(buffer) - 1, 0);
-        if (n <= 0)
+        if (n == 0) {
+            printf("adsb: connection closed by remote host\n");
+            adsb_disconnect(sockfd);
+            sockfd = -1;
             continue;
+        } else if (n < 0) {
+            if (errno == EINTR)
+                continue;
+            printf("adsb: recv error: %s\n", strerror(errno));
+            if (++consecutive_errors >= MAX_CONSECUTIVE_ERRORS) {
+                printf("adsb: too many consecutive errors, reconnecting...\n");
+                adsb_disconnect(sockfd);
+                sockfd             = -1;
+                consecutive_errors = 0;
+            }
+            continue;
+        } else {
+            last_message_time = time(NULL);
+        }
+
+        consecutive_errors = 0;
 
         buffer[n] = '\0';
         for (int i = 0; i < n; i++) {
