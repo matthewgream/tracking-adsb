@@ -19,7 +19,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define MAX(a,b) ((a)>(b)?(a):(b))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------------------------
@@ -436,7 +436,8 @@ bool voxel_get_stats(size_t *occupied, size_t *total, double *occupancy) {
 bool coordinates_are_valid(const double lat, const double lon) { return (lat >= -90.0 && lat <= 90.0 && lon >= -180.0 && lon <= 180.0); }
 
 bool position_is_valid(const double lat, const double lon, const int altitude_ft, const double distance_nm) {
-    return coordinates_are_valid (lat, lon) && (altitude_ft >= DEFAULT_ALTITUDE_MIN_FT && altitude_ft <= g_config.altitude_max_ft) && (distance_nm <= g_config.distance_max_nm);
+    return coordinates_are_valid(lat, lon) && (altitude_ft >= DEFAULT_ALTITUDE_MIN_FT && altitude_ft <= g_config.altitude_max_ft) &&
+           (distance_nm <= g_config.distance_max_nm);
 }
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
