@@ -633,20 +633,20 @@ bool adsb_parse_sbs_position(const char *const line, char *const icao, double *c
     const char *fields[ADSB_MAX_FIELDS_DECODE], *fields_end[ADSB_MAX_FIELDS_DECODE];
     unsigned int i = 0;
 
-    const char *p = line, *start = p;
+    const char *p = line, *s = p;
     while (*p && i < ADSB_MAX_FIELDS_DECODE) {
         if (*p == ',' || *p == '\n' || *p == '\r' || *p == '\0') {
-            fields[i]     = start;
+            fields[i]     = s;
             fields_end[i] = p;
             i++;
             if (*p == '\0')
                 break;
-            start = p + 1;
+            s = p + 1;
         }
         p++;
     }
-    if (i < ADSB_MAX_FIELDS_DECODE && start < p && p[-1] != ',') {
-        fields[i]     = start;
+    if (i < ADSB_MAX_FIELDS_DECODE && s < p && p[-1] != ',') {
+        fields[i]     = s;
         fields_end[i] = p;
         i++;
     }
@@ -660,15 +660,12 @@ bool adsb_parse_sbs_position(const char *const line, char *const icao, double *c
     if (fields[14] == fields_end[14] || fields[15] == fields_end[15])
         return false;
 
-    size_t icao_len = (size_t)fields_end[4] - (size_t)fields[4];
-    if (icao_len > 6)
-        icao_len = 6;
+    const size_t icao_len = MAX((size_t)fields_end[4] - (size_t)fields[4], 6);
     memcpy(icao, fields[4], icao_len);
     icao[icao_len] = '\0';
-
-    *lat = strtod(fields[14], NULL);
-    *lon = strtod(fields[15], NULL);
-    *alt = (fields[11] < fields_end[11]) ? (int)strtol(fields[11], NULL, 10) : 0;
+    *lat           = strtod(fields[14], NULL);
+    *lon           = strtod(fields[15], NULL);
+    *alt           = (fields[11] < fields_end[11]) ? (int)strtol(fields[11], NULL, 10) : 0;
 
     return true;
 }
