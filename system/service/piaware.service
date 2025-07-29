@@ -1,0 +1,23 @@
+[Unit]
+Description=FlightAware ADS-B uploader
+PartOf=adsb-feeders.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=30
+# exit code 4 means login failed
+# exit code 6 means startup failed (bad args or missing MAC)
+RestartPreventExitStatus=4 6
+WatchdogSec=120
+WatchdogSignal=SIGKILL
+RuntimeDirectory=piaware
+SyslogIdentifier=flightaware
+StandardOutput=journal
+StandardError=journal
+# Nice=-1
+User=root
+ExecStart=/usr/bin/piaware -p %t/piaware/piaware.pid -plainlog -statusfile %t/piaware/status.json
+
+[Install]
+WantedBy=adsb-feeders.target

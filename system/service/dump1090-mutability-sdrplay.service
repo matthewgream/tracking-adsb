@@ -1,0 +1,18 @@
+[Unit]
+Description=dump1090 ModeS/ADS-B receiver (Mutability SDRplay variant)
+After=network.target sdrplay.service time-sync.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+SyslogIdentifier=dump1090
+StandardOutput=journal
+StandardError=journal
+# Nice=-5
+User=root
+EnvironmentFile=/etc/default/dump1090-mutability-sdrplay
+ExecStart=/usr/local/bin/dump1090_mutability_sdrplay $DUMP1090_OPTS
+
+[Install]
+WantedBy=multi-user.target

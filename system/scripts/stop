@@ -1,0 +1,8 @@
+systemctl stop lighttpd
+systemctl stop adsb-monitor
+
+systemctl stop adsb-feeders
+
+systemctl stop dump1090\*
+systemctl stop sdrplay
+

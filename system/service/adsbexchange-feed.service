@@ -1,0 +1,18 @@
+[Unit]
+Description=adsbexchange-feed
+PartOf=adsb-feeders.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=30
+RuntimeDirectory=adsbexchange-feed
+SyslogIdentifier=adsbx-feed
+StandardOutput=journal
+StandardError=journal
+# Nice=-1
+User=root
+ExecStart=/usr/local/share/adsbexchange/adsbexchange-feed.sh
+
+[Install]
+WantedBy=adsb-feeders.target

@@ -1,0 +1,18 @@
+[Unit]
+Description=Flightradar24 Decoder & Feeder
+PartOf=adsb-feeders.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=30
+RuntimeDirectory=fr24feed
+SyslogIdentifier=flightradar24
+StandardOutput=journal
+StandardError=journal
+# Nice=-1
+User=root
+ExecStart=/usr/bin/fr24feed
+
+[Install]
+WantedBy=adsb-feeders.target

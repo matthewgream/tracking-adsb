@@ -1,0 +1,18 @@
+[Unit]
+Description=RBFeeder Service
+PartOf=adsb-feeders.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=30
+RuntimeDirectory=rbfeeder
+SyslogIdentifier=airnavradar
+StandardOutput=journal
+StandardError=journal
+# Nice=-1
+User=root
+ExecStart=/usr/bin/rbfeeder -c /etc/rbfeeder.ini
+
+[Install]
+WantedBy=adsb-feeders.target

@@ -1,0 +1,12 @@
+systemctl start sdrplay
+systemctl start dump1090\*
+
+systemctl start rbfeeder
+systemctl start piaware
+systemctl start fr24feed
+systemctl start adsbexchange-feed
+systemctl start adsbexchange-mlat
+systemctl start adsbexchange-stats
+
+systemctl start lighttpd
+systemctl start adsb-monitor

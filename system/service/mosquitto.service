@@ -1,0 +1,15 @@
+[Unit]
+Description=Mosquitto MQTT Broker
+After=network.target
+Wants=network.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+Restart=on-failure
+ExecStartPre=/bin/mkdir -m 740 -p /run/mosquitto
+ExecStartPre=/bin/chown mosquitto /run/mosquitto
+ExecStart=/usr/sbin/mosquitto -c /etc/mosquitto/mosquitto.conf
+
+[Install]
+WantedBy=multi-user.target

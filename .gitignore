@@ -10,3 +10,4 @@ package-lock.json
 *.csv
 .cache*
 .prettierrc.json
+system/config

@@ -1,0 +1,17 @@
+[Unit]
+Description=adsbexchange-mlat
+PartOf=adsb-feeders.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=30
+SyslogIdentifier=adsbx-mlat
+StandardOutput=journal
+StandardError=journal
+# Nice=-1
+User=root
+ExecStart=/usr/local/share/adsbexchange/adsbexchange-mlat.sh
+
+[Install]
+WantedBy=adsb-feeders.target
