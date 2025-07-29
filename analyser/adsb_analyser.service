@@ -1,5 +1,6 @@
 [Unit]
 Description=ADSB Analyser (to MQTT)
+After=dump1090-mutability-sdrplay.service
 
 [Service]
 Type=simple
