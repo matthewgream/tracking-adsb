@@ -49,7 +49,7 @@
 #define PRUNE_THRESHOLD 0.95
 #define PRUNE_RATIO 0.05
 #define LOOP_SLEEP 5
-#define MAX_CONSECUTIVE_ERRORS 10
+#define MAX_CONSECUTIVE_ERRORS 5
 #define MESSAGE_TIMEOUT 300
 #define CONNECTION_RETRY_PERIOD 5
 
@@ -214,6 +214,60 @@ static bool interval_wait(time_t *const last, const time_t interval, volatile bo
     }
     *last = time(NULL);
     return *running;
+}
+
+// -----------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
+
+bool mqtt_publish(const char * const topic, const unsigned char * const data, const size_t length) {
+    if (g_mosq) {
+        const int rc = mosquitto_publish(g_mosq, NULL, topic, (int)length, data, 0, false);
+        if (rc == MOSQ_ERR_SUCCESS)
+            return true;
+        printf("mqtt: publish failed: %s\n", mosquitto_strerror(rc));
+    }
+    return false;
+}
+
+void mqtt_on_connect(struct mosquitto *mosq __attribute__((unused)), void *obj __attribute__((unused)), int rc) {
+    if (rc == 0)
+        printf("mqtt: connection succeeded to %s:%d\n", g_config.mqtt_host, g_config.mqtt_port);
+    else
+        printf("mqtt: connection failed to %s:%d (mosquitto_connect): %s\n", g_config.mqtt_host, g_config.mqtt_port, mosquitto_strerror(rc));
+}
+
+bool mqtt_begin(void) {
+    char mqtt_host[MAX_NAME_LENGTH];
+    if (!host_resolve(g_config.mqtt_host, mqtt_host, sizeof(mqtt_host)))
+        return false;
+    mosquitto_lib_init();
+    g_mosq = mosquitto_new(DEFAULT_MQTT_CLIENT_ID, true, NULL);
+    if (!g_mosq) {
+        mosquitto_lib_cleanup();
+        printf("mqtt: connection failed to %s:%d (mosquitto_new)\n", g_config.mqtt_host, g_config.mqtt_port);
+        return false;
+    }
+    mosquitto_connect_callback_set(g_mosq, mqtt_on_connect);
+    const int rc = mosquitto_connect(g_mosq, mqtt_host, g_config.mqtt_port, 60);
+    if (rc != MOSQ_ERR_SUCCESS) {
+        mosquitto_destroy(g_mosq);
+        g_mosq = NULL;
+        mosquitto_lib_cleanup();
+        printf("mqtt: connection failed to %s:%d (mosquitto_connect): %s\n", g_config.mqtt_host, g_config.mqtt_port, mosquitto_strerror(rc));
+        return false;
+    }
+    mosquitto_loop_start(g_mosq);
+    return true;
+}
+
+void mqtt_end(void) {
+    if (g_mosq) {
+        mosquitto_disconnect(g_mosq);
+        mosquitto_loop_stop(g_mosq, true);
+        mosquitto_destroy(g_mosq);
+        g_mosq = NULL;
+        mosquitto_lib_cleanup();
+    }
 }
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
@@ -611,16 +665,13 @@ void aircraft_publish_mqtt(void) {
     json_off += (size_t)snprintf(json_str + json_off, sizeof(json_str) - json_off, "]}");
     pthread_mutex_unlock(&g_aircraft_list.mutex);
 
-    if (published_cnt > 0) {
-        const int rc = mosquitto_publish(g_mosq, NULL, g_config.mqtt_topic, (int)json_off, json_str, 0, false);
-        if (rc == MOSQ_ERR_SUCCESS) {
+    if (published_cnt > 0)
+        if (mqtt_publish(g_config.mqtt_topic, (const unsigned char *)json_str, json_off)) {
             g_aircraft_stat.published_mqtt += published_cnt;
             for (int i = 0; i < MAX_AIRCRAFT; i++) // locking not needed
                 if (published_set[i])
                     g_aircraft_list.entries[i].published = now;
-        } else
-            printf("mqtt: %lu aircraft updates, publish failed: %s\n", published_cnt, mosquitto_strerror(rc));
-    }
+        }
 }
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
@@ -738,7 +789,7 @@ void *adsb_processing_thread(void *arg __attribute__((unused))) {
             sockfd = -1;
             continue;
         } else if (n < 0) {
-            if (errno == EINTR)
+            if (errno == EINTR || errno == EAGAIN)
                 continue;
             printf("adsb: recv error: %s\n", strerror(errno));
             if (++consecutive_errors >= MAX_CONSECUTIVE_ERRORS) {
@@ -799,48 +850,6 @@ bool adsb_processing_begin(void) {
     return true;
 }
 void adsb_processing_end(void) { pthread_join(adsb_processing_thread_handle, NULL); }
-
-// -----------------------------------------------------------------------------------------------------------------------------------------
-// -----------------------------------------------------------------------------------------------------------------------------------------
-
-void mqtt_on_connect(struct mosquitto *mosq __attribute__((unused)), void *obj __attribute__((unused)), int rc) {
-    if (rc == 0)
-        printf("mqtt: connection succeeded to %s:%d\n", g_config.mqtt_host, g_config.mqtt_port);
-    else
-        printf("mqtt: connection failed to %s:%d (mosquitto_connect): %s\n", g_config.mqtt_host, g_config.mqtt_port, mosquitto_strerror(rc));
-}
-
-bool mqtt_begin(void) {
-    char mqtt_host[MAX_NAME_LENGTH];
-    if (!host_resolve(g_config.mqtt_host, mqtt_host, sizeof(mqtt_host)))
-        return false;
-    mosquitto_lib_init();
-    g_mosq = mosquitto_new(DEFAULT_MQTT_CLIENT_ID, true, NULL);
-    if (!g_mosq) {
-        mosquitto_lib_cleanup();
-        printf("mqtt: connection failed to %s:%d (mosquitto_new)\n", g_config.mqtt_host, g_config.mqtt_port);
-        return false;
-    }
-    mosquitto_connect_callback_set(g_mosq, mqtt_on_connect);
-    const int rc = mosquitto_connect(g_mosq, mqtt_host, g_config.mqtt_port, 60);
-    if (rc != MOSQ_ERR_SUCCESS) {
-        mosquitto_destroy(g_mosq);
-        mosquitto_lib_cleanup();
-        printf("mqtt: connection failed to %s:%d (mosquitto_connect): %s\n", g_config.mqtt_host, g_config.mqtt_port, mosquitto_strerror(rc));
-        return false;
-    }
-    mosquitto_loop_start(g_mosq);
-    return true;
-}
-
-void mqtt_end(void) {
-    if (g_mosq) {
-        mosquitto_loop_stop(g_mosq, true);
-        mosquitto_destroy(g_mosq);
-        g_mosq = NULL;
-        mosquitto_lib_cleanup();
-    }
-}
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------------------------
