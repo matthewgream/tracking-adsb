@@ -9,6 +9,12 @@ BraceWrapping:
   AfterStruct: false
   SplitEmptyRecord: false
 AlignConsecutiveAssignments: true
+AlignConsecutiveMacros:
+  Enabled: true
+  AcrossEmptyLines: true
+  AcrossComments: true
+  AlignCompound: true
+  PadOperators: true
 AllowShortBlocksOnASingleLine: false
 SpacesInContainerLiterals: true
 Cpp11BracedListStyle: false

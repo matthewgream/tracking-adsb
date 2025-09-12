@@ -19,22 +19,22 @@
 #include <time.h>
 #include <unistd.h>
 
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MAX(a, b)               ((a) > (b) ? (a) : (b))
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------------------------
 
-#define DEFAULT_DIRECTORY "/opt/tracking-adsb/analyser"
-#define DEFAULT_ADSB_HOST "127.0.0.1"
-#define DEFAULT_ADSB_PORT 30003
-#define DEFAULT_MQTT_HOST "127.0.0.1"
-#define DEFAULT_MQTT_PORT 1883
-#define DEFAULT_MQTT_TOPIC "adsb/analyser"
-#define DEFAULT_MQTT_CLIENT_ID "adsb_analyser"
-#define DEFAULT_MQTT_INTERVAL 300
+#define DEFAULT_DIRECTORY       "/opt/tracking-adsb/analyser"
+#define DEFAULT_ADSB_HOST       "127.0.0.1"
+#define DEFAULT_ADSB_PORT       30003
+#define DEFAULT_MQTT_HOST       "127.0.0.1"
+#define DEFAULT_MQTT_PORT       1883
+#define DEFAULT_MQTT_TOPIC      "adsb/analyser"
+#define DEFAULT_MQTT_CLIENT_ID  "adsb_analyser"
+#define DEFAULT_MQTT_INTERVAL   300
 #define DEFAULT_STATUS_INTERVAL 300
-#define DEFAULT_POSITION_LAT 51.501126
-#define DEFAULT_POSITION_LON -0.14239
+#define DEFAULT_POSITION_LAT    51.501126
+#define DEFAULT_POSITION_LON    -0.14239
 #define DEFAULT_DISTANCE_MAX_NM 1000.0
 #define DEFAULT_ALTITUDE_MAX_FT 75000.0
 #define DEFAULT_ALTITUDE_MIN_FT -1500.0
@@ -42,15 +42,15 @@
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------------------------
 
-#define MAX_NAME_LENGTH 256
-#define MAX_LINE_LENGTH 512
-#define MAX_AIRCRAFT 65536
-#define HASH_MASK (MAX_AIRCRAFT - 1)
-#define PRUNE_THRESHOLD 0.95
-#define PRUNE_RATIO 0.05
-#define LOOP_SLEEP 5
-#define MAX_CONSECUTIVE_ERRORS 5
-#define MESSAGE_TIMEOUT 300
+#define MAX_NAME_LENGTH         256
+#define MAX_LINE_LENGTH         512
+#define MAX_AIRCRAFT            65536
+#define HASH_MASK               (MAX_AIRCRAFT - 1)
+#define PRUNE_THRESHOLD         0.95
+#define PRUNE_RATIO             0.05
+#define LOOP_SLEEP              5
+#define MAX_CONSECUTIVE_ERRORS  10
+#define MESSAGE_TIMEOUT         300
 #define CONNECTION_RETRY_PERIOD 5
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
@@ -115,7 +115,7 @@ typedef struct {
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------------------------
 
-config_t g_config = { // defaults
+config_t g_config = {
     .directory       = DEFAULT_DIRECTORY,
     .adsb_host       = DEFAULT_ADSB_HOST,
     .adsb_port       = DEFAULT_ADSB_PORT,
@@ -128,7 +128,7 @@ config_t g_config = { // defaults
     .altitude_max_ft = DEFAULT_ALTITUDE_MAX_FT,
     .position_lat    = DEFAULT_POSITION_LAT,
     .position_lon    = DEFAULT_POSITION_LON,
-    .debug           = false
+    .debug           = false,
 };
 aircraft_list_t g_aircraft_list = { 0 };
 aircraft_stat_t g_aircraft_stat = { 0 };
@@ -274,12 +274,12 @@ void mqtt_end(void) {
 // -----------------------------------------------------------------------------------------------------------------------------------------
 
 #define VOXEL_SIZE_HORIZONTAL_NM 1.0
-#define VOXEL_SIZE_VERTICAL_FT 1000.0
-#define VOXEL_MAX_COUNT ((1 << 16) - 1)
-#define VOXEL_FILE_PATH "adsb_voxel_map.dat"
-#define VOXEL_SAVE_INTERVAL (30 * 60)
-#define VOXEL_FILE_MAGIC 0x56585041 // "VXPA" in hex
-#define VOXEL_FILE_VERSION 1
+#define VOXEL_SIZE_VERTICAL_FT   1000.0
+#define VOXEL_MAX_COUNT          ((1 << 16) - 1)
+#define VOXEL_FILE_PATH          "adsb_voxel_map.dat"
+#define VOXEL_SAVE_INTERVAL      (30 * 60)
+#define VOXEL_FILE_MAGIC         0x56585041 // "VXPA" in hex
+#define VOXEL_FILE_VERSION       1
 
 typedef unsigned short voxel_data_t;
 
@@ -427,9 +427,11 @@ bool voxel_map_load(void) {
 void *voxel_save_thread(void *arg __attribute__((unused))) {
     if (g_config.debug)
         printf("voxel: map save file thread started\n");
+
     while (interval_wait(&g_voxel_map.last_save, VOXEL_SAVE_INTERVAL, &g_running))
         voxel_map_save();
     voxel_map_save();
+
     if (g_config.debug)
         printf("voxel: map save file thread stopped\n");
     return NULL;
@@ -554,7 +556,6 @@ aircraft_data_t *aircraft_find_or_create(const char *const icao) {
 }
 
 void aircraft_position_update(const char *const icao, const double lat, const double lon, const int altitude_ft, const time_t timestamp) {
-
     const double distance_nm = calculate_distance_nm(g_config.position_lat, g_config.position_lon, lat, lon);
 
     if (!position_is_valid(lat, lon, altitude_ft, distance_nm)) {
@@ -678,9 +679,8 @@ void aircraft_publish_mqtt(void) {
 // -----------------------------------------------------------------------------------------------------------------------------------------
 
 bool adsb_parse_sbs_position(const char *const line, char *const icao, double *const lat, double *const lon, int *const alt) {
-#define ADSB_MAX_FIELDS_DECODE 18
+#define ADSB_MAX_FIELDS_DECODE   18
 #define ADSB_MIN_FIELDS_REQUIRED 16
-
     const char *fields[ADSB_MAX_FIELDS_DECODE], *fields_end[ADSB_MAX_FIELDS_DECODE];
     unsigned int i = 0;
 
@@ -849,6 +849,7 @@ bool adsb_processing_begin(void) {
     }
     return true;
 }
+
 void adsb_processing_end(void) { pthread_join(adsb_processing_thread_handle, NULL); }
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
@@ -1002,22 +1003,21 @@ void signal_handler(const int sig) {
 }
 
 int main(const int argc, char *const argv[]) {
-
     const int r = parse_options(argc, argv);
     if (r != 0)
         return r;
     print_config();
 
     if (!voxel_map_begin())
-        return 1;
+        return EXIT_FAILURE;
     if (!mqtt_begin())
-        return 1;
+        return EXIT_FAILURE;
     if (pthread_mutex_init(&g_aircraft_list.mutex, NULL) != 0) {
         perror("pthread_mutex_init");
-        return 1;
+        return EXIT_FAILURE;
     }
     if (!adsb_processing_begin())
-        return 1;
+        return EXIT_FAILURE;
 
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
@@ -1031,7 +1031,7 @@ int main(const int argc, char *const argv[]) {
     mqtt_end();
     voxel_map_end();
 
-    return 0;
+    return EXIT_SUCCESS;
 }
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
