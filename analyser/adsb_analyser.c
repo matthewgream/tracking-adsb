@@ -219,7 +219,7 @@ static bool interval_wait(time_t *const last, const time_t interval, volatile bo
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------------------------
 
-bool mqtt_publish(const char * const topic, const unsigned char * const data, const size_t length) {
+bool mqtt_publish(const char *const topic, const unsigned char *const data, const size_t length) {
     if (g_mosq) {
         const int rc = mosquitto_publish(g_mosq, NULL, topic, (int)length, data, 0, false);
         if (rc == MOSQ_ERR_SUCCESS)
