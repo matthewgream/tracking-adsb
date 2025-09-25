@@ -789,7 +789,7 @@ void *adsb_processing_thread(void *arg __attribute__((unused))) {
             sockfd = -1;
             continue;
         } else if (n < 0) {
-            if (errno == EINTR || errno == EAGAIN)
+            if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
                 continue;
             printf("adsb: recv error: %s\n", strerror(errno));
             if (++consecutive_errors >= MAX_CONSECUTIVE_ERRORS) {
