@@ -1,5 +1,6 @@
 [Unit]
 Description=RBFeeder Service
+After=dump1090-sdrplay.service
 PartOf=adsb-feeders.target
 
 [Service]

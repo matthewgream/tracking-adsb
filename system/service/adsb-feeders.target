@@ -1,4 +1,5 @@
 [Unit]
 Description=ADS-B Feeder Services
-After=dump1090-mutability-sdrplay.service
-BindsTo=dump1090-mutability-sdrplay.service
+
+[Install]
+WantedBy=multi-user.target

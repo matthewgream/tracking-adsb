@@ -1,0 +1,19 @@
+[Unit]
+Description=dump1090 ModeS/ADS-B receiver
+After=network.target sdrplay.service
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+SyslogIdentifier=dump1090
+StandardOutput=journal
+StandardError=journal
+# Nice=-5
+User=root
+EnvironmentFile=/etc/default/dump1090-sdrplay
+# ExecStart=/usr/local/bin/$DUMP1090_VERSION $DUMP1090_DEVICE $DUMP1090_OPTIONS $DUMP1090_SPECIFIC
+ExecStart=/bin/sh -c 'exec /usr/local/bin/${DUMP1090_VERSION} ${DUMP1090_DEVICE} ${DUMP1090_OPTIONS} ${DUMP1090_SPECIFIC}'
+
+[Install]
+WantedBy=multi-user.target

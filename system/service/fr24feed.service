@@ -1,18 +1,21 @@
 [Unit]
 Description=Flightradar24 Decoder & Feeder
+After=dump1090-sdrplay.service
 PartOf=adsb-feeders.target
 
 [Service]
 Type=simple
 Restart=always
-RestartSec=30
-RuntimeDirectory=fr24feed
-SyslogIdentifier=flightradar24
+LimitCORE=infinity
+ExecStartPre=-/usr/lib/fr24/create_missing_directories.sh
+ExecStartPre=/usr/bin/fr24feed --validate-config --config-file=/etc/fr24feed.ini
+ExecStart=/usr/bin/fr24feed
+User=fr24
+Group=fr24
+PermissionsStartOnly=true
 StandardOutput=journal
 StandardError=journal
-# Nice=-1
-User=root
-ExecStart=/usr/bin/fr24feed
 
 [Install]
 WantedBy=adsb-feeders.target
+
