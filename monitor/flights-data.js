@@ -3,6 +3,7 @@
 
 const http = require('http');
 const https = require('https');
+const fs = require('fs').promises;
 const FlightHexcodeMappings = require('./flights-hexcode-mappings.js');
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -53,9 +54,50 @@ class FlightDataFetcher {
         }
     }
 
+    async load(file) {
+        this.stats.requests++;
+        for (let attempt = 0; attempt <= this.options.retries; attempt++) {
+            if (attempt > 0) {
+                this.stats.retries++;
+                await this._delay(this.options.retryDelay * attempt);
+                if (this.options.debug) {
+                    this._log(`retry attempt ${attempt} for ${file}`);
+                }
+            }
+            try {
+                const data = await this._loadInternal(file);
+                this.stats.successful++;
+                this.stats.lastSuccess = new Date();
+                return data;
+            } catch (e) {
+                this.stats.lastError = e;
+                if (attempt === this.options.retries) {
+                    this.stats.failed++;
+                    throw e;
+                }
+            }
+        }
+        throw new Error('Unexpected error: retry loop completed without returning');
+    }
+    async _loadInternal(file) {
+        try {
+            const rawData = await fs.readFile(file, 'utf8');
+            try {
+                const data = JSON.parse(rawData);
+                const processed = this._processResponse(data);
+                return processed;
+            } catch (e) {
+                throw new Error(`JSON parse error: ${e.message}`);
+            }
+        } catch (e) {
+            if (e.code === 'ENOENT') throw new Error(`File not found: ${file}`);
+            else if (e.code === 'EACCES') throw new Error(`Permission denied: ${file}`);
+            else throw new Error(`File read error: ${e.message}`);
+        }
+    }
+
     async fetch(url) {
         this.stats.requests++;
-
         for (let attempt = 0; attempt <= this.options.retries; attempt++) {
             if (attempt > 0) {
                 this.stats.retries++;

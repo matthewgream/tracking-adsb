@@ -75,13 +75,14 @@ function airportsInit(config, { location, range, vicinity }) {
 }
 
 function furtherInit(config) {
+    const dataDirectory = config.data?.directory || '../content';
     const dataFurther = Object.fromEntries(
         Object.entries(config)
             .filter(([name]) => name !== 'data')
             .map(([name, options]) => {
                 let data;
                 try {
-                    data = new (require(`./data-${name}.js`))({ ...options, directory: '../content' });
+                    data = new (require(`./data-${name}.js`))({ ...options, directory: dataDirectory });
                     console.error(`data-${name}: ${data.getInfo()}`);
                 } catch (e) {
                     console.error(`data [${name}]: could not be loaded:`, e);
@@ -91,7 +92,6 @@ function furtherInit(config) {
     );
 
     const { DataLoader } = require('./function-data.js');
-    const dataDirectory = config.data?.directory || '../content';
     const dataLoader = new DataLoader(dataDirectory);
     if (config.data?.preload && Array.isArray(config.data?.preload))
         for (const filename of config.data.preload) {
@@ -233,7 +233,7 @@ function flightsProcessStats(filters, aircrafts) {
 
 let preprocess_exclude;
 async function flightsFetch(config, flights) {
-    const data = await flights.fetch(config.link);
+    const data = config.link ? await flights.fetch(config.link) : await flights.load(config.file);
     if (config?.exclude) {
         if (!preprocess_exclude && config.exclude) preprocess_exclude = new Set(config.exclude);
         if (preprocess_exclude && data.aircraft) data.aircraft = data.aircraft.filter((aircraft) => !aircraft.flight || !preprocess_exclude.has(aircraft.flight));
@@ -576,7 +576,7 @@ async function systemLoop(config, system) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 function systemInit(config) {
-    const data = { location: config.location, range: config.range_max, vicinity: config.filters.vicinity.vicinity.distance }; // XXX fragile
+    const data = { location: config.location, range: config.range_max, vicinity: config.filters.vicinity.distance }; // XXX fragile
     const flights = flightsInit(config.flights);
     const airports = airportsInit(config.airports, data);
     const further = furtherInit(config.further);
