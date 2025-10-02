@@ -3,7 +3,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const tools = { ...require('./tools-geometry.js'), ...require('./tools-formats.js') };
+const tools = { ...require('./tools-geometry.js'), ...require('./tools-formats.js'), ...require('./tools-location.js') };
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -554,7 +554,7 @@ function systemStatus(system) {
 
 async function systemLoop(config, system) {
     try {
-        const { data, stat, filteredAircraft } = await flightsObtain(config.flights, system.flights, system.filters, { location: config.location });
+        const { data, stat, filteredAircraft } = await flightsObtain(config.flights, system.flights, system.filters, { location: system.location.getLocation() });
         if (data) {
             const processedData = flightsTrack(data);
             const filteredData = { ...processedData, aircraft: filteredAircraft };
@@ -576,13 +576,14 @@ async function systemLoop(config, system) {
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 function systemInit(config) {
-    const data = { location: config.location, range: config.range_max, vicinity: config.filters.vicinity.distance }; // XXX fragile
+    const location = new tools.LocationManager(config.location);
+    const data = { location: location.getLocation(), range: config.range_max, vicinity: config.filters.vicinity.distance }; // XXX fragile
     const flights = flightsInit(config.flights);
     const airports = airportsInit(config.airports, data);
     const further = furtherInit(config.further);
     const filters = filterInit(config.filters, { data: { ...data, ...further, airports } });
     const deliver = deliverInit(config.deliver);
-    return { flights, airports, further, filters, deliver };
+    return { flights, airports, further, filters, deliver, location };
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -602,6 +603,7 @@ if (debugSort) {
 }
 console.error('config:', config);
 const system = systemInit(config);
+console.error(`location: ${system.location.getInfo()}`);
 system.stats = {
     started: new Date().toISOString(),
     counts: { okay: 0, error: 0, empty: 0 },
@@ -610,6 +612,7 @@ const loopInterval = setInterval(() => systemLoop(config, system), CYCLE_SCAN_TI
 const shutdown = async () => {
     console.error('\nSHUTDOWN');
     clearInterval(loopInterval);
+    system?.location?.destroy();
     system?.flights?.getMappings()?.destroy();
     await system?.deliver?.destroy();
     // eslint-disable-next-line n/no-process-exit
