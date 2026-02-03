@@ -15,7 +15,7 @@ CFLAGS_STRICT=-Werror -Wcast-align -Wcast-qual \
     -Wunreachable-code -Wunused \
     -Wwrite-strings
 CFLAGS=$(CFLAGS_COMMON) $(CFLAGS_STRICT) -O3 -march=native -fstack-protector-strong
-LDFLAGS=-lm -lpthread -lmosquitto
+LDFLAGS=-lm -lpthread -lmosquitto -lcjson
 
 HOSTNAME=$(shell hostname)
 
